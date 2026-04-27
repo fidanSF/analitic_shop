@@ -215,11 +215,10 @@ function badgeClass(p) {
 async function getMonthData(sheetName) {
   try {
     const rows = await fetchCSV(sheetName);
-    // Строка 9 (индекс 9) = ИТОГО
-    const itogoRow = rows[9] || [];
+    // Строка 8 = "Розница" (итого по всем магазинам)
+    const itogoRow = rows[8] || [];
     const plan = num(itogoRow[4]);
     const fact = num(itogoRow[5]);
-    // % хранится как дробное 0.79 → умножаем на 100
     let pctRaw = num(itogoRow[6]);
     const pct = pctRaw < 2 && pctRaw > 0 ? Math.round(pctRaw * 100) : Math.round(pctRaw);
     return { plan, fact, pct };
@@ -232,17 +231,16 @@ async function getMonthData(sheetName) {
 async function getStores(sheetName) {
   const rows = await fetchCSV(sheetName);
   const stores = [];
-  // Строки 4,5,6 = магазины
-  for (let i = 4; i <= 6; i++) {
+  // Строки 3,4,5 = магазины; название магазина в col 20
+  for (let i = 3; i <= 5; i++) {
     const row = rows[i] || [];
-    const name = String(row[0] || '').trim();
+    const name = String(row[20] || '').trim();
     if (!name || name === '' || name.toLowerCase().includes('итого') || name.startsWith('(')) continue;
     const plan = num(row[4]);
     const fact = num(row[5]);
     if (plan < 100000) continue;
     let pctRaw = num(row[6]);
     const pct = pctRaw < 2 && pctRaw > 0 ? Math.round(pctRaw * 100) : Math.round(pctRaw);
-    // Прогноз и ср.дневной
     const avgDay = num(row[7]);
     const toGo = num(row[9]);
     stores.push({ name, plan, fact, pct, avgDay, toGo });
@@ -253,28 +251,25 @@ async function getStores(sheetName) {
 async function getDaily(sheetName) {
   const rows = await fetchCSV(sheetName);
   const days = [];
-  // Дневные данные с строки 14 (индекс 14)
-  for (let i = 14; i < rows.length; i++) {
+  // Дневные данные с строки 9 (индекс 9)
+  for (let i = 9; i < rows.length; i++) {
     const row = rows[i] || [];
-    // col 0 = дата (может быть "1/04/2026" или "2026-04-01" или число)
     const dateStr = String(row[0] || '').trim();
-    if (!dateStr || dateStr === '') break;
-    
+    if (!dateStr || dateStr === '' || !dateStr.match(/\d{2}\.\d{2}\.\d{4}/)) break;
+
     const s1 = num(row[1]);
     const s2 = num(row[4]);
     const s3 = num(row[6]);
-    
+
     if (s1 + s2 + s3 === 0) continue;
-    
-    // Извлекаем день из даты
-    let dayNum = i - 13; // fallback
+
+    let dayNum = i - 8; // fallback
     const dateMatch = dateStr.match(/(\d+)[\/\-\.](\d+)[\/\-\.](\d+)/);
     if (dateMatch) {
       const parts = dateMatch.slice(1).map(Number);
-      // Находим наименьшее число ≤ 31 — это день
       dayNum = parts.find(p => p >= 1 && p <= 31) || dayNum;
     }
-    
+
     days.push({ day: dayNum, s1, s2, s3 });
   }
   return days;
@@ -518,10 +513,6 @@ async function loadAll() {
     renderKPI(cur, prev);
     renderStores(stores);
     renderInsights(cur, prev, stores);
-    draw2026(d2026);
-    drawPct(d2026);
-    draw2025(d2025);
-    drawDaily(daily);
 
     const now = new Date();
     document.getElementById('updateTime').textContent =
@@ -529,6 +520,14 @@ async function loadAll() {
 
     document.getElementById('loader').style.display = 'none';
     document.getElementById('content').style.display = 'block';
+
+    // Графики рисуются ПОСЛЕ показа контента, чтобы canvas имел ненулевые размеры
+    requestAnimationFrame(() => {
+      draw2026(d2026);
+      drawPct(d2026);
+      draw2025(d2025);
+      drawDaily(daily);
+    });
 
   } catch(e) {
     document.getElementById('loader').innerHTML = `
