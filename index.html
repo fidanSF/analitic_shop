@@ -1,205 +1,579 @@
-// ============================================================
-// ВОЛЬТМАРКЕТ — ЕЖЕДНЕВНЫЙ ОТЧЁТ В TELEGRAM
-// Версия 2.0 — с ссылкой на живой дашборд
-// ============================================================
-// КАК УСТАНОВИТЬ:
-// 1. Открой Google Таблицу → Расширения → Apps Script
-// 2. Удали весь старый код
-// 3. Вставь этот файл полностью
-// 4. Нажми Сохранить (Ctrl+S)
-// 5. Выбери функцию testReport → нажми ▶ Запустить
-// 6. Настрой триггер: иконка часов → Добавить триггер →
-//    sendDailyReport → Ежедневно → выбери время (напр. 9:00)
-// ============================================================
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Аналитика продаж — Вольтмаркет</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{--bg:#0a0b0f;--bg2:#12141a;--bg3:#1a1d26;--border:rgba(255,255,255,0.07);--accent:#4f8ef7;--accent2:#7c5cfc;--green:#22c55e;--amber:#f59e0b;--red:#ef4444;--text:#f0f2f8;--muted:#6b7280;--muted2:#9ca3af}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min-height:100vh}
 
-// ===== НАСТРОЙКИ =====
-const TELEGRAM_TOKEN = "8670409798:AAG4ApjODUlg9r5krAsIyBQU_BsuFv4MYa4";
-const CHAT_ID        = "56017237";
-const DASHBOARD_URL  = "https://fidansf.github.io/analitic_shop/";
+.header{background:var(--bg2);border-bottom:1px solid var(--border);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;gap:1rem;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:12px}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.logo-text{font-size:16px;font-weight:700}
+.logo-sub{font-size:12px;color:var(--muted);margin-top:1px}
 
-// Название текущего и прошлого листа
-// ⚠️ ОБНОВЛЯЙ В НАЧАЛЕ КАЖДОГО МЕСЯЦА:
-const CURRENT_SHEET = "Май 2026";   // ← текущий месяц
-const PREV_SHEET    = "Апрель 2026"; // ← предыдущий месяц
+.month-selector{display:flex;align-items:center;gap:8px;flex:1;justify-content:center;flex-wrap:wrap}
+.month-nav-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0}
+.month-nav-btn:hover{background:var(--accent);border-color:var(--accent)}
+.month-nav-btn:disabled{opacity:0.3;cursor:not-allowed}
+.month-select{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:8px;font-family:'Manrope',sans-serif;font-size:13px;font-weight:600;cursor:pointer;min-width:160px;text-align:center}
+.month-select:focus{outline:none;border-color:var(--accent)}
+.current-badge{font-size:11px;color:var(--green);background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);padding:3px 8px;border-radius:20px;white-space:nowrap}
 
-// Настройки структуры таблицы (не менять)
-const ITOGO_ROW      = 10;  // строка ИТОГО
-const STORE_START    = 5;   // первая строка с магазином
-const STORE_END      = 7;   // последняя строка с магазином
-const COL_NAME       = 1;   // столбец: название магазина
-const COL_PLAN       = 5;   // столбец: план
-const COL_FACT       = 6;   // столбец: факт
-const COL_PCT        = 7;   // столбец: % выполнения
-const COL_TOGO       = 10;  // столбец: до выполнения плана
-// ============================================================
+.header-right{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);background:var(--bg3);padding:6px 14px;border-radius:20px;border:1px solid var(--border);white-space:nowrap}
+.update-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:6px;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 
-function sendDailyReport() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CURRENT_SHEET);
+.loader{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;gap:16px}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-text{color:var(--muted);font-size:14px;text-align:center}
 
-  if (!sheet) {
-    sendTelegram(`❌ Лист не найден: *${CURRENT_SHEET}*\nПроверь название в настройках скрипта.`);
-    return;
-  }
+.container{max-width:1200px;margin:0 auto;padding:2rem}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:1.75rem}
+.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.25rem 1.5rem;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:16px 16px 0 0}
+.kpi-card.blue::before{background:var(--accent)}
+.kpi-card.green::before{background:var(--green)}
+.kpi-card.amber::before{background:var(--amber)}
+.kpi-card.purple::before{background:var(--accent2)}
+.kpi-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px}
+.kpi-value{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1;margin-bottom:6px}
+.kpi-sub{font-size:12px;color:var(--muted2)}
+.kpi-badge{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-top:8px}
+.badge-green{background:rgba(34,197,94,0.15);color:var(--green)}
+.badge-amber{background:rgba(245,158,11,0.15);color:var(--amber)}
+.badge-red{background:rgba(239,68,68,0.15);color:var(--red)}
 
-  const today     = new Date();
-  const dayNum    = today.getDate();
-  const daysTotal = new Date(today.getFullYear(), today.getMonth()+1, 0).getDate();
-  const daysLeft  = daysTotal - dayNum;
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:1.75rem}
+.chart-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.5rem}
+.chart-card.full{grid-column:1/-1}
+.chart-title{font-size:14px;font-weight:700;margin-bottom:4px}
+.chart-sub{font-size:12px;color:var(--muted);margin-bottom:1.25rem}
 
-  // Читаем строку ИТОГО
-  const itogoRow = sheet.getRange(ITOGO_ROW, 1, 1, 15).getValues()[0];
-  const totalPlan = itogoRow[COL_PLAN - 1];
-  const totalFact = itogoRow[COL_FACT - 1];
-  const totalPct  = itogoRow[COL_PCT - 1];
-  const pct       = typeof totalPct === 'number' && totalPct < 2
-                    ? Math.round(totalPct * 100)
-                    : Math.round(totalPct);
-  const deficit   = totalFact - totalPlan;
-  const dailyAvg  = dayNum > 0 ? Math.round(totalFact / dayNum / 1000) : 0;
-  const needed    = daysLeft > 0 ? Math.round((totalPlan - totalFact) / daysLeft / 1000) : 0;
+.stores-section{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.5rem;margin-bottom:1.75rem}
+.store-row{display:grid;grid-template-columns:1fr 130px 130px 70px 180px;align-items:center;gap:1rem;padding:1rem 0;border-bottom:1px solid var(--border)}
+.store-row:last-child{border-bottom:none}
+.store-row.head{padding:0 0 0.75rem;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em}
+.store-name{font-weight:600;font-size:14px}
+.mono{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--muted2)}
+.pct-big{font-weight:700;font-size:15px}
+.bar-wrap{height:6px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px}
 
-  // ── СООБЩЕНИЕ 1: Итого ──────────────────────────────────
-  let msg1 = `📊 *ЕЖЕДНЕВНЫЙ ОТЧЁТ*\n`;
-  msg1 += `📅 ${formatDate(today)} · ${CURRENT_SHEET}\n`;
-  msg1 += `━━━━━━━━━━━━━━━━━\n\n`;
-  msg1 += `*ИТОГО по сети:*\n`;
-  msg1 += `• План:       ${formatMoney(totalPlan)}\n`;
-  msg1 += `• Факт:       ${formatMoney(totalFact)}\n`;
-  msg1 += `• Выполнение: ${pct}% ${getPctEmoji(pct)}\n`;
-  msg1 += `• ${deficit >= 0 ? '✅ Опережение' : '⚠️ Дефицит'}: ${formatMoney(Math.abs(deficit))}\n\n`;
-  msg1 += `${makeProgressBar(pct)}\n\n`;
-  msg1 += `📈 Ср. день: *${dailyAvg} тыс ₽* · нужно ${needed} тыс/день`;
+.insights-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:1.75rem}
+.insight-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.25rem}
+.insight-icon{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;margin-bottom:10px}
+.insight-title{font-size:13px;font-weight:700;margin-bottom:6px}
+.insight-text{font-size:12px;color:var(--muted2);line-height:1.6}
+.footer{text-align:center;padding:2rem;font-size:12px;color:var(--muted);border-top:1px solid var(--border)}
 
-  sendTelegram(msg1);
-  Utilities.sleep(1000);
+@media(max-width:900px){
+  .kpi-row{grid-template-columns:1fr 1fr}
+  .charts-grid{grid-template-columns:1fr}
+  .chart-card.full{grid-column:1}
+  .insights-row{grid-template-columns:1fr}
+  .store-row{grid-template-columns:1fr 60px 70px}
+  .store-row .mono,.store-row .bar-wrap{display:none}
+  .container{padding:1rem}
+  .header{padding:0.75rem 1rem}
+  .month-selector{order:3;width:100%;justify-content:center}
+}
+</style>
+</head>
+<body>
 
-  // ── СООБЩЕНИЕ 2: По магазинам ───────────────────────────
-  let msg2 = `🏪 *По магазинам — ${CURRENT_SHEET}:*\n`;
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-text">Вольтмаркет</div>
+      <div class="logo-sub">Аналитика продаж</div>
+    </div>
+  </div>
 
-  for (let r = STORE_START; r <= STORE_END; r++) {
-    const row = sheet.getRange(r, 1, 1, 15).getValues()[0];
-    const name = String(row[COL_NAME - 1]).trim();
-    if (!name || name.includes('РО№') || name.startsWith('(') || name.toLowerCase().includes('итого')) continue;
+  <div class="month-selector">
+    <button class="month-nav-btn" id="btnPrev" onclick="navigateMonth(-1)" title="Предыдущий месяц">←</button>
+    <select class="month-select" id="monthSelect" onchange="selectMonth(this.value)">
+      <option value="">Загрузка...</option>
+    </select>
+    <button class="month-nav-btn" id="btnNext" onclick="navigateMonth(1)" title="Следующий месяц">→</button>
+    <span class="current-badge" id="currentBadge" style="display:none">● Текущий</span>
+  </div>
 
-    const plan = row[COL_PLAN - 1];
-    const fact = row[COL_FACT - 1];
-    const pctRaw = row[COL_PCT - 1];
-    const togo = row[COL_TOGO - 1];
-    if (!plan || plan < 100000) continue;
+  <div class="header-right">
+    <span class="update-dot"></span>
+    <span id="updateTime">Загрузка...</span>
+  </div>
+</div>
 
-    const storePct = typeof pctRaw === 'number' && pctRaw < 2
-                     ? Math.round(pctRaw * 100)
-                     : Math.round(pctRaw);
+<div id="loader" class="loader">
+  <div class="spinner"></div>
+  <div class="loader-text" id="loaderText">Загружаем список месяцев...</div>
+</div>
 
-    const shortName = name
-      .replace('Магазин №', '№')
-      .replace(' (Победы)', ' Победы')
-      .replace(' (Автоматики)', ' Автомат.')
-      .replace(' (Орск,Ленина)', ' Орск');
+<div id="content" style="display:none">
+<div class="container">
+  <div class="kpi-row" id="kpiRow"></div>
+  <div class="charts-grid">
+    <div class="chart-card full">
+      <div class="chart-title" id="titleYear">Выручка и план</div>
+      <div class="chart-sub">Факт vs план · все месяцы года</div>
+      <div style="position:relative;height:220px"><canvas id="c2026"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">% выполнения плана</div>
+      <div class="chart-sub">Динамика по месяцам года</div>
+      <div style="position:relative;height:220px"><canvas id="cPct"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title" id="titlePrevYear">Выручка прошлого года</div>
+      <div class="chart-sub">Фактическая выручка по месяцам</div>
+      <div style="position:relative;height:220px"><canvas id="c2025"></canvas></div>
+    </div>
+  </div>
+  <div class="stores-section">
+    <div style="margin-bottom:1.25rem">
+      <div class="chart-title" id="storesTitle">Выполнение плана по магазинам</div>
+      <div class="chart-sub" id="storesSub">Выбранный месяц</div>
+    </div>
+    <div class="store-row head">
+      <span>Магазин</span><span>План</span><span>Факт</span><span>%</span><span>Прогресс</span>
+    </div>
+    <div id="storesBody"></div>
+  </div>
+  <div class="chart-card full" style="margin-bottom:1.75rem">
+    <div class="chart-title" id="dailyTitle">Ежедневная выручка</div>
+    <div class="chart-sub">По магазинам · рублей в день</div>
+    <div style="position:relative;height:260px"><canvas id="cDaily"></canvas></div>
+  </div>
+  <div class="insights-row" id="insightsRow"></div>
+</div>
+<div class="footer">Аналитика продаж · Вольтмаркет · Обновляется автоматически каждые 5 минут</div>
+</div>
 
-    msg2 += `\n${getPctEmoji(storePct)} *${shortName}*\n`;
-    msg2 += `  Факт: ${formatMoney(fact)} · ${storePct}%\n`;
-    msg2 += `  ${fact < plan ? '⚠️ До плана: '+formatMoney(Math.abs(togo)) : '✅ План выполнен!'}\n`;
-  }
+<script>
+const SHEET_ID = '19NRvFiXIUJ0BIsfW-ggkSKHaAEbWdlPvlHGLGIFyQGM';
+const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 
-  // Сравнение с прошлым месяцем
-  const prevSheet = ss.getSheetByName(PREV_SHEET);
-  if (prevSheet) {
-    try {
-      const prevRow  = prevSheet.getRange(ITOGO_ROW, 1, 1, 15).getValues()[0];
-      const prevFact = prevRow[COL_FACT - 1];
-      if (prevFact && prevFact > 100000) {
-        const growth = ((totalFact - prevFact) / prevFact * 100).toFixed(1);
-        msg2 += `\n━━━━━━━━━━━━━━━━━\n`;
-        msg2 += `📊 *Vs прошлый месяц (${PREV_SHEET}):*\n`;
-        msg2 += `${parseFloat(growth) > 0 ? '▲' : '▼'} ${Math.abs(growth)}%`;
-        msg2 += ` · ${formatMoney(prevFact)} → ${formatMoney(totalFact)}\n`;
-      }
-    } catch(e) {}
-  }
+Chart.defaults.color = '#6b7280';
+Chart.defaults.font.family = 'Manrope';
 
-  msg2 += `\n━━━━━━━━━━━━━━━━━\n`;
-  msg2 += `📊 [Открыть дашборд с графиками](${DASHBOARD_URL})\n`;
-  msg2 += `_${dayNum}-й день месяца · осталось ${daysLeft} дней_`;
+// Кеш загруженных данных
+const cache = {};
 
-  sendTelegram(msg2);
+// Состояние
+let allMonths = [];       // все доступные месяцы
+let selectedIndex = -1;   // индекс выбранного месяца в allMonths
+let latestIndex = -1;     // индекс последнего (текущего) месяца
+
+function csvUrl(sheet) {
+  return `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheet)}`;
 }
 
-// ============================================================
-// Вспомогательные функции
-// ============================================================
-
-function formatMoney(v) {
-  if (!v || isNaN(v)) return "—";
-  const mln = Math.abs(v) / 1000000;
-  if (mln >= 1) return (Math.round(mln * 10) / 10) + " млн ₽";
-  const ths = Math.abs(v) / 1000;
-  return Math.round(ths) + " тыс ₽";
-}
-
-function formatDate(d) {
-  const days   = ['вс','пн','вт','ср','чт','пт','сб'];
-  const months = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
-  return `${d.getDate()} ${months[d.getMonth()]} (${days[d.getDay()]})`;
-}
-
-function getPctEmoji(pct) {
-  if (pct >= 100) return "✅";
-  if (pct >= 85)  return "🟡";
-  if (pct >= 70)  return "🟠";
-  return "🔴";
-}
-
-function makeProgressBar(pct) {
-  const filled = Math.round(Math.min(pct, 100) / 10);
-  const empty  = 10 - filled;
-  return '█'.repeat(filled) + '░'.repeat(empty) + ` ${pct}%`;
-}
-
-function sendTelegram(text) {
-  const url     = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  const payload = {
-    chat_id:    CHAT_ID,
-    text:       text,
-    parse_mode: "Markdown",
-    disable_web_page_preview: false
-  };
-  UrlFetchApp.fetch(url, {
-    method:      "post",
-    contentType: "application/json",
-    payload:     JSON.stringify(payload)
+function fetchCSV(sheet) {
+  if (cache[sheet]) return Promise.resolve(cache[sheet]);
+  return new Promise((res, rej) => {
+    Papa.parse(csvUrl(sheet), {
+      download: true,
+      complete: r => { cache[sheet] = r.data; res(r.data); },
+      error: e => rej(e)
+    });
   });
 }
 
+function num(v) {
+  if (!v && v !== 0) return 0;
+  const n = parseFloat(String(v).replace(/\s/g,'').replace(',','.'));
+  return isNaN(n) ? 0 : n;
+}
+function fmt(v) {
+  if (!v) return '—';
+  const m = Math.abs(v)/1000000;
+  if (m >= 1) return (Math.round(m*10)/10)+' млн ₽';
+  return Math.round(Math.abs(v)/1000)+' тыс ₽';
+}
+function fmtM(v) { return (v/1000000).toFixed(1)+'М'; }
+function pctColor(p) { return p>=100?'#22c55e':p>=70?'#f59e0b':'#ef4444'; }
+function badgeClass(p) { return p>=100?'badge-green':p>=75?'badge-amber':'badge-red'; }
+function parsePct(v) { const n=num(v); return n<2&&n>0?Math.round(n*100):Math.round(n); }
+
 // ============================================================
-// Запусти эту функцию для теста!
+// Поиск доступных месяцев
 // ============================================================
-function testReport() {
-  sendDailyReport();
+async function findAvailableMonths() {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  const candidates = [];
+  for (let year = currentYear - 1; year <= currentYear; year++) {
+    for (let m = 0; m < 12; m++) {
+      if (year === currentYear && m > currentMonth) continue;
+      candidates.push({ name:`${MONTH_NAMES[m]} ${year}`, year, month:m, short:SHORT[m] });
+    }
+  }
+
+  const results = await Promise.allSettled(
+    candidates.map(c => fetchCSV(c.name).then(rows => ({ ...c, rows })))
+  );
+
+  return results
+    .filter(r => r.status==='fulfilled' && r.value.rows && r.value.rows.length > 5)
+    .map(r => r.value);
 }
 
 // ============================================================
-// Автообновление названия месяца (запускай 1 раз в начале месяца)
-// Или настрой триггер: 1-го числа каждого месяца
+// Парсинг
 // ============================================================
-function autoUpdateMonth() {
-  const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь',
-                  'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-  const now   = new Date();
-  const year  = now.getFullYear();
-  const month = now.getMonth();
+function parseMonthData(rows) {
+  const r = rows[9] || [];
+  const plan = num(r[4]);
+  const fact = num(r[5]);
+  const pct = parsePct(r[6]);
+  return { plan, fact, pct };
+}
 
-  const current = `${MONTHS[month]} ${year}`;
-  const prev    = month > 0
-    ? `${MONTHS[month-1]} ${year}`
-    : `${MONTHS[11]} ${year-1}`;
+function parseStores(rows) {
+  const stores = [];
+  for (let i=4; i<=6; i++) {
+    const row = rows[i]||[];
+    const name = String(row[0]||'').trim();
+    if (!name||name.toLowerCase().includes('итого')||name.startsWith('(')||name.includes('РО№')) continue;
+    const plan = num(row[4]);
+    const fact = num(row[5]);
+    if (plan < 100000) continue;
+    const pct = parsePct(row[6]);
+    const toGo = num(row[9]);
+    stores.push({ name, plan, fact, pct, toGo });
+  }
+  return stores;
+}
 
-  // Обновляем свойства скрипта
-  PropertiesService.getScriptProperties().setProperties({
-    'CURRENT_SHEET': current,
-    'PREV_SHEET':    prev
+function parseDaily(rows) {
+  const days = [];
+  for (let i=14; i<rows.length; i++) {
+    const row = rows[i]||[];
+    const dateStr = String(row[0]||'').trim();
+    if (!dateStr) break;
+    const s1=num(row[1]), s2=num(row[4]), s3=num(row[6]);
+    if (s1+s2+s3===0) continue;
+    let day = i-13;
+    const m = dateStr.match(/(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})/);
+    if (m) { const p=[parseInt(m[1]),parseInt(m[2]),parseInt(m[3])]; const d=p.find(x=>x>=1&&x<=31); if(d) day=d; }
+    days.push({ day, s1, s2, s3 });
+  }
+  return days;
+}
+
+// ============================================================
+// Навигация по месяцам
+// ============================================================
+function navigateMonth(delta) {
+  const newIndex = selectedIndex + delta;
+  if (newIndex >= 0 && newIndex < allMonths.length) {
+    selectedIndex = newIndex;
+    document.getElementById('monthSelect').value = selectedIndex;
+    renderSelectedMonth();
+  }
+}
+
+function selectMonth(val) {
+  selectedIndex = parseInt(val);
+  renderSelectedMonth();
+}
+
+function updateNavButtons() {
+  document.getElementById('btnPrev').disabled = selectedIndex <= 0;
+  document.getElementById('btnNext').disabled = selectedIndex >= allMonths.length - 1;
+  const isLatest = selectedIndex === latestIndex;
+  document.getElementById('currentBadge').style.display = isLatest ? 'inline-flex' : 'none';
+}
+
+// ============================================================
+// Рендер выбранного месяца
+// ============================================================
+async function renderSelectedMonth() {
+  const sel = allMonths[selectedIndex];
+  if (!sel) return;
+
+  updateNavButtons();
+
+  // Показываем мини-лоадер в контенте
+  document.getElementById('kpiRow').style.opacity = '0.4';
+
+  // Загружаем данные выбранного месяца (из кеша или сети)
+  const rows = await fetchCSV(sel.name);
+  const prev = selectedIndex > 0 ? allMonths[selectedIndex-1] : null;
+  const prevRows = prev ? await fetchCSV(prev.name) : null;
+
+  const curData = parseMonthData(rows);
+  const prevData = prevRows ? parseMonthData(prevRows) : null;
+  const stores = parseStores(rows);
+  const daily = parseDaily(rows);
+
+  // Определяем — текущий это месяц или прошлый
+  const isCurrentMonth = selectedIndex === latestIndex;
+  const today = isCurrentMonth ? new Date().getDate() : null;
+
+  renderKPI(curData, prevData, sel.name, today, isCurrentMonth);
+  renderStores(stores, sel.name, isCurrentMonth);
+  renderInsights(curData, prevData, stores, sel.name, prev ? prev.name : '', today, isCurrentMonth);
+
+  // Обновляем графики года для выбранного месяца
+  const yearMonths = allMonths.filter(m => m.year === sel.year);
+  const yearData = yearMonths.map(m => ({ ...parseMonthData(cache[m.name]||[]), short:m.short, name:m.name }));
+
+  const prevYearMonths = allMonths.filter(m => m.year === sel.year - 1);
+  const prevYearData = prevYearMonths.map(m => ({ ...parseMonthData(cache[m.name]||[]), short:m.short }));
+
+  document.getElementById('titleYear').textContent = `Выручка и план — ${sel.year}`;
+  document.getElementById('titlePrevYear').textContent = `Выручка ${sel.year-1}`;
+  document.getElementById('dailyTitle').textContent = `Ежедневная выручка — ${sel.name}`;
+
+  draw2026(yearData, sel.month);
+  drawPct(yearData, sel.month);
+  if (prevYearData.length) draw2025(prevYearData);
+  drawDaily(daily);
+
+  const now = new Date();
+  document.getElementById('updateTime').textContent =
+    `${sel.name} · ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+  document.getElementById('kpiRow').style.opacity = '1';
+}
+
+// ============================================================
+// Рендер KPI
+// ============================================================
+function renderKPI(cur, prev, name, today, isCurrentMonth) {
+  const deficit = cur.fact - cur.plan;
+  const daysInMonth = 30;
+  const dayNum = today || daysInMonth;
+  const daysLeft = isCurrentMonth ? daysInMonth - dayNum : 0;
+  const dailyAvg = dayNum > 0 ? Math.round(cur.fact/dayNum/1000) : 0;
+  const needed = daysLeft > 0 ? Math.round((cur.plan-cur.fact)/daysLeft/1000) : 0;
+  const growth = prev&&prev.fact>0 ? ((cur.fact-prev.fact)/prev.fact*100).toFixed(1) : null;
+
+  document.getElementById('kpiRow').innerHTML = `
+    <div class="kpi-card blue">
+      <div class="kpi-label">Факт · ${name}</div>
+      <div class="kpi-value">${fmtM(cur.fact)} млн</div>
+      <div class="kpi-sub">из ${fmtM(cur.plan)} млн план</div>
+      <span class="kpi-badge ${badgeClass(cur.pct)}">${cur.pct}% плана</span>
+    </div>
+    <div class="kpi-card amber">
+      <div class="kpi-label">${deficit>=0?'Опережение':'Дефицит'}</div>
+      <div class="kpi-value">${fmtM(Math.abs(deficit))} млн</div>
+      <div class="kpi-sub">${isCurrentMonth?'осталось '+daysLeft+' дней':'итог месяца'}</div>
+      <span class="kpi-badge ${deficit>=0?'badge-green':'badge-red'}">${deficit>=0?'+':'–'}${Math.abs(Math.round(deficit/cur.plan*100))}%</span>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Ср. дневная выручка</div>
+      <div class="kpi-value">${dailyAvg} тыс</div>
+      <div class="kpi-sub">за ${dayNum} дней${isCurrentMonth?' месяца':''}</div>
+      ${isCurrentMonth&&needed>0?`<span class="kpi-badge badge-amber">нужно ${needed} тыс/день</span>`:'<span class="kpi-badge badge-green">месяц завершён</span>'}
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label">К прошлому месяцу</div>
+      <div class="kpi-value">${growth!==null?Math.abs(growth)+'%':'—'}</div>
+      <div class="kpi-sub">${prev?fmt(prev.fact)+' → '+fmt(cur.fact):''}</div>
+      <span class="kpi-badge ${growth!==null&&parseFloat(growth)>0?'badge-green':'badge-red'}">${growth!==null&&parseFloat(growth)>0?'▲ Рост':'▼ Снижение'}</span>
+    </div>`;
+}
+
+// ============================================================
+// Рендер магазинов
+// ============================================================
+function renderStores(stores, name, isCurrentMonth) {
+  document.getElementById('storesTitle').textContent = `Выполнение плана — ${name}`;
+  document.getElementById('storesSub').textContent = isCurrentMonth ? 'Текущий месяц' : 'Итог месяца';
+  const colors = ['#4f8ef7','#7c5cfc','#22c55e','#f59e0b'];
+  let html = '';
+  stores.forEach((s,i) => {
+    html += `
+      <div class="store-row">
+        <div class="store-name">${s.name}</div>
+        <div class="mono">${Math.round(s.plan/1000)} тыс</div>
+        <div class="mono">${Math.round(s.fact/1000)} тыс</div>
+        <div class="pct-big" style="color:${pctColor(s.pct)}">${s.pct}%</div>
+        <div>
+          <div class="bar-wrap"><div class="bar-fill" style="width:${Math.min(s.pct,100)}%;background:${colors[i%colors.length]}"></div></div>
+          <div style="font-size:11px;color:#6b7280;margin-top:4px">${s.fact<s.plan?'–'+fmt(Math.abs(s.toGo))+' до плана':'✅ план выполнен'}</div>
+        </div>
+      </div>`;
   });
-
-  sendTelegram(`✅ *Месяц обновлён автоматически*\nТекущий: ${current}\nПредыдущий: ${prev}`);
+  const tp=stores.reduce((a,s)=>a+s.plan,0), tf=stores.reduce((a,s)=>a+s.fact,0);
+  const tpct=tp>0?Math.round(tf/tp*100):0;
+  html += `
+    <div class="store-row" style="background:rgba(79,142,247,0.05);border-radius:10px;padding:1rem;margin-top:4px">
+      <div class="store-name" style="font-size:15px">ИТОГО</div>
+      <div class="mono" style="font-weight:700">${Math.round(tp/1000)} тыс</div>
+      <div class="mono" style="font-weight:700">${Math.round(tf/1000)} тыс</div>
+      <div class="pct-big" style="color:${pctColor(tpct)};font-size:17px">${tpct}%</div>
+      <div>
+        <div class="bar-wrap" style="height:8px"><div class="bar-fill" style="width:${Math.min(tpct,100)}%;background:linear-gradient(90deg,#4f8ef7,#7c5cfc)"></div></div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px">${tf<tp?'–'+fmt(tp-tf)+' до плана':'✅ план выполнен'}</div>
+      </div>
+    </div>`;
+  document.getElementById('storesBody').innerHTML = html;
 }
+
+// ============================================================
+// Инсайты
+// ============================================================
+function renderInsights(cur, prev, stores, name, prevName, today, isCurrentMonth) {
+  if (!stores.length) return;
+  const best=stores.reduce((a,b)=>a.pct>b.pct?a:b);
+  const worst=stores.reduce((a,b)=>a.pct<b.pct?a:b);
+  const dayNum = today || 30;
+  const daysLeft = isCurrentMonth ? 30 - dayNum : 0;
+  const dailyNeeded = daysLeft>0?Math.round((cur.plan-cur.fact)/daysLeft/1000):0;
+  const growth = prev&&prev.fact>0?((cur.fact-prev.fact)/prev.fact*100).toFixed(1):null;
+  const forecast = dayNum>0?Math.round(cur.fact/dayNum*30):0;
+
+  document.getElementById('insightsRow').innerHTML = `
+    <div class="insight-card">
+      <div class="insight-icon" style="background:rgba(79,142,247,0.15)">📊</div>
+      <div class="insight-title">Выполнение плана</div>
+      <div class="insight-text">${cur.pct}% от плана. ${cur.pct<80?'Значительное отставание.':cur.pct<95?'Умеренное отставание.':'Отличный результат!'} ${isCurrentMonth?'До конца месяца '+daysLeft+' дней.':'Месяц закрыт.'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon" style="background:rgba(34,197,94,0.15)">🏆</div>
+      <div class="insight-title">Лидер — ${best.name}</div>
+      <div class="insight-text">Лучший магазин: ${best.pct}% плана. Факт: ${fmt(best.fact)} из ${fmt(best.plan)}.</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon" style="background:rgba(239,68,68,0.15)">⚠️</div>
+      <div class="insight-title">Отстаёт — ${worst.name}</div>
+      <div class="insight-text">Наименьшее выполнение: ${worst.pct}%. Факт: ${fmt(worst.fact)} из ${fmt(worst.plan)}. Разрыв: ${fmt(Math.abs(worst.toGo))}.</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon" style="background:rgba(245,158,11,0.15)">🎯</div>
+      <div class="insight-title">${isCurrentMonth?'Дневная цель':'Средний день'}</div>
+      <div class="insight-text">${isCurrentMonth&&daysLeft>0?'Нужно '+dailyNeeded+' тыс ₽/день в оставшиеся '+daysLeft+' дней. Текущий темп: '+Math.round(cur.fact/dayNum/1000)+' тыс/день.':'Средняя дневная выручка: '+Math.round(cur.fact/dayNum/1000)+' тыс ₽/день.'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon" style="background:${growth&&parseFloat(growth)>0?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)'}">📈</div>
+      <div class="insight-title">Динамика к прошлому месяцу</div>
+      <div class="insight-text">${growth?(parseFloat(growth)>0?'▲ Рост':'▼ Снижение')+' на '+Math.abs(growth)+'%. '+prevName+': '+fmt(prev.fact)+' → '+name+': '+fmt(cur.fact):'Нет данных.'}</div>
+    </div>
+    <div class="insight-card">
+      <div class="insight-icon" style="background:rgba(124,92,252,0.15)">💡</div>
+      <div class="insight-title">${isCurrentMonth?'Прогноз на конец месяца':'Итог месяца'}</div>
+      <div class="insight-text">${isCurrentMonth?'При текущем темпе к концу месяца факт ~'+fmt(forecast)+' — это '+Math.round(forecast/cur.plan*100)+'% от плана.':'Итоговое выполнение: '+cur.pct+'% от плана. Факт: '+fmt(cur.fact)+'.'}</div>
+    </div>`;
+}
+
+// ============================================================
+// Графики
+// ============================================================
+let charts = {};
+function mkChart(id, config) { if(charts[id]) charts[id].destroy(); charts[id]=new Chart(document.getElementById(id),config); }
+const gc='rgba(255,255,255,0.04)', bc='rgba(255,255,255,0.07)', tt={backgroundColor:'#1a1d26',borderColor:'rgba(255,255,255,0.1)',borderWidth:1};
+
+function draw2026(data, selectedMonth) {
+  mkChart('c2026',{type:'bar',data:{
+    labels:data.map(d=>d.short),
+    datasets:[
+      {label:'Факт',data:data.map(d=>d.fact),backgroundColor:data.map((_,i)=>i===data.findIndex(d=>d.name===allMonths[selectedIndex]?.name)?'#22c55e':'#4f8ef7'),borderRadius:6,borderSkipped:false},
+      {label:'План',data:data.map(d=>d.plan),backgroundColor:'rgba(255,255,255,0.07)',borderRadius:6,borderSkipped:false,borderColor:'rgba(255,255,255,0.15)',borderWidth:1}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+fmtM(c.raw)+'М ₽'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:11}},grid:{color:gc},border:{color:bc}},y:{ticks:{callback:fmtM,color:'#6b7280'},grid:{color:gc},border:{color:bc}}}
+  }});
+}
+
+function drawPct(data) {
+  mkChart('cPct',{type:'line',data:{
+    labels:data.map(d=>d.short),
+    datasets:[
+      {label:'% план',data:data.map(d=>d.pct),borderColor:'#7c5cfc',backgroundColor:'rgba(124,92,252,0.1)',tension:0.4,fill:true,pointRadius:6,pointBackgroundColor:'#7c5cfc',pointBorderColor:'#0a0b0f',pointBorderWidth:2},
+      {label:'100%',data:data.map(()=>100),borderColor:'rgba(255,255,255,0.15)',borderDash:[6,4],pointRadius:0,borderWidth:1}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+c.raw+'%'}}},
+    scales:{x:{ticks:{color:'#6b7280'},grid:{color:gc},border:{color:bc}},y:{min:50,max:110,ticks:{callback:v=>v+'%',color:'#6b7280'},grid:{color:gc},border:{color:bc}}}
+  }});
+}
+
+function draw2025(data) {
+  mkChart('c2025',{type:'bar',data:{
+    labels:data.map(d=>d.short),
+    datasets:[{label:'Факт',data:data.map(d=>d.fact),backgroundColor:data.map((_,i)=>i===data.length-1?'#22c55e':'#4f8ef7'),borderRadius:5,borderSkipped:false}]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>fmtM(c.raw)+'М ₽'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:0},grid:{color:gc},border:{color:bc}},y:{ticks:{callback:fmtM,color:'#6b7280'},grid:{color:gc},border:{color:bc}}}
+  }});
+}
+
+function drawDaily(days) {
+  if (!days.length) return;
+  mkChart('cDaily',{type:'bar',data:{
+    labels:days.map(d=>d.day),
+    datasets:[
+      {label:'№1 Победы',data:days.map(d=>d.s1),backgroundColor:'#4f8ef7',borderRadius:3},
+      {label:'№2 Автоматики',data:days.map(d=>d.s2),backgroundColor:'#7c5cfc',borderRadius:3},
+      {label:'№3 Орск',data:days.map(d=>d.s3),backgroundColor:'#22c55e',borderRadius:3}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+Math.round(c.raw/1000)+'тыс'}}},
+    scales:{
+      x:{stacked:true,ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc},title:{display:true,text:'День месяца',color:'#6b7280',font:{size:11}}},
+      y:{stacked:true,ticks:{callback:v=>Math.round(v/1000)+'К',color:'#6b7280'},grid:{color:gc},border:{color:bc}}
+    }
+  }});
+}
+
+// ============================================================
+// Инициализация
+// ============================================================
+async function init() {
+  try {
+    document.getElementById('loaderText').textContent = 'Загружаем список месяцев...';
+    allMonths = await findAvailableMonths();
+
+    if (!allMonths.length) throw new Error('Нет доступных данных. Открой доступ к таблице.');
+
+    // Заполняем выпадающий список
+    const select = document.getElementById('monthSelect');
+    select.innerHTML = allMonths.map((m,i) =>
+      `<option value="${i}">${m.name}</option>`
+    ).join('');
+
+    // По умолчанию — последний (текущий) месяц
+    latestIndex = allMonths.length - 1;
+    selectedIndex = latestIndex;
+    select.value = selectedIndex;
+
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    await renderSelectedMonth();
+
+  } catch(e) {
+    document.getElementById('loader').innerHTML = `
+      <div style="text-align:center;color:#ef4444">
+        <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px">Ошибка загрузки</div>
+        <div style="font-size:13px;color:#9ca3af;margin-bottom:8px">${e.message}</div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:16px">Убедись что таблица открыта:<br>Настройки доступа → Все у кого есть ссылка → Читатель</div>
+        <button onclick="init()" style="background:#4f8ef7;color:white;border:none;padding:10px 24px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">🔄 Попробовать снова</button>
+      </div>`;
+    console.error(e);
+  }
+}
+
+init();
+setInterval(() => { cache[allMonths[selectedIndex]?.name] = null; renderSelectedMonth(); }, 5*60*1000);
+</script>
+</body>
+</html>
