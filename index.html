@@ -233,39 +233,85 @@ async function findAvailableMonths() {
 // ============================================================
 // Парсинг
 // ============================================================
+
+// Определяем формат листа по сигнатуре:
+// 2026: строка [8] col[11] = "Розница"  → plan=col[4], fact=col[5], pct=col[6]; дни в col[7]
+// 2025: итог в строке [9]              → plan=col[3], fact=col[4], pct=col[5]; дни в col[6]
+function detectFmt(rows) {
+  return String(rows[8]?.[11] || '').toLowerCase().includes('розница') ? '2026' : '2025';
+}
+
 function parseMonthData(rows) {
-  const r = rows[9] || [];
-  const plan = num(r[4]);
-  const fact = num(r[5]);
-  const pct = parsePct(r[6]);
-  return { plan, fact, pct };
+  const fmt = detectFmt(rows);
+  let r, plan, fact, pctRaw, daysInMonth, daysElapsed;
+
+  if (fmt === '2026') {
+    r           = rows[8] || [];
+    plan        = num(r[4]);
+    fact        = num(r[5]);
+    pctRaw      = r[6];
+    daysInMonth = num(rows[0]?.[7]) || 30;
+    daysElapsed = num(rows[1]?.[7]) || daysInMonth;
+  } else {
+    r           = rows[9] || [];
+    plan        = num(r[3]);
+    fact        = num(r[4]);
+    pctRaw      = r[5];
+    daysInMonth = num(rows[0]?.[6]) || 31;
+    daysElapsed = num(rows[1]?.[6]) || daysInMonth;
+  }
+  const pct = parsePct(pctRaw);
+  return { plan, fact, pct, daysInMonth, daysElapsed };
 }
 
 function parseStores(rows) {
+  const fmt = detectFmt(rows);
   const stores = [];
-  for (let i=4; i<=6; i++) {
-    const row = rows[i]||[];
-    const name = String(row[0]||'').trim();
-    if (!name||name.toLowerCase().includes('итого')||name.startsWith('(')||name.includes('РО№')) continue;
-    const plan = num(row[4]);
-    const fact = num(row[5]);
-    if (plan < 100000) continue;
-    const pct = parsePct(row[6]);
-    const toGo = num(row[9]);
-    stores.push({ name, plan, fact, pct, toGo });
+
+  if (fmt === '2026') {
+    // Строки 3-5, название в col[20], план col[4], факт col[5], % col[6], toGo col[9]
+    for (let i = 3; i <= 5; i++) {
+      const row = rows[i] || [];
+      const name = String(row[20] || '').trim();
+      if (!name || name.toLowerCase().includes('итого') || name.startsWith('(')) continue;
+      const plan = num(row[4]), fact = num(row[5]);
+      if (plan < 100000) continue;
+      stores.push({ name, plan, fact, pct: parsePct(row[6]), toGo: num(row[9]) });
+    }
+  } else {
+    // 2025: строки 3-8, название в col[17], план col[3], факт col[4], % col[5]
+    for (let i = 3; i <= 8; i++) {
+      const row = rows[i] || [];
+      const name = String(row[17] || '').trim();
+      if (!name || name.toLowerCase().includes('итого') || name.startsWith('(') || name.includes('РО№')) continue;
+      const plan = num(row[3]), fact = num(row[4]);
+      if (plan < 100000) continue;
+      stores.push({ name, plan, fact, pct: parsePct(row[5]), toGo: plan - fact });
+    }
   }
   return stores;
 }
 
 function parseDaily(rows) {
+  const fmt = detectFmt(rows);
+  // 2026: данные с строки 9; 2025: с строки 13
+  const startRow = fmt === '2026' ? 9 : 13;
   const days = [];
-  for (let i=14; i<rows.length; i++) {
-    const row = rows[i]||[];
-    const dateStr = String(row[0]||'').trim();
-    if (!dateStr) break;
-    const s1=num(row[1]), s2=num(row[4]), s3=num(row[6]);
-    if (s1+s2+s3===0) continue;
-    let day = i-13;
+
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const dateStr = String(row[0] || '').trim();
+    if (!dateStr || !dateStr.match(/\d{1,2}[\.\/\-]\d{1,2}[\.\/\-]\d{2,4}/)) break;
+
+    let s1, s2, s3;
+    if (fmt === '2026') {
+      s1 = num(row[1]); s2 = num(row[4]); s3 = num(row[6]);
+    } else {
+      s1 = num(row[1]); s2 = num(row[3]); s3 = num(row[7]);
+    }
+    if (s1 + s2 + s3 === 0) continue;
+
+    let day = i - startRow + 1;
     const m = dateStr.match(/(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})/);
     if (m) { const p=[parseInt(m[1]),parseInt(m[2]),parseInt(m[3])]; const d=p.find(x=>x>=1&&x<=31); if(d) day=d; }
     days.push({ day, s1, s2, s3 });
@@ -319,13 +365,15 @@ async function renderSelectedMonth() {
   const stores = parseStores(rows);
   const daily = parseDaily(rows);
 
-  // Определяем — текущий это месяц или прошлый
+  // Дни берём из таблицы, а не из системной даты
+  const { daysElapsed, daysInMonth } = curData;
   const isCurrentMonth = selectedIndex === latestIndex;
-  const today = isCurrentMonth ? new Date().getDate() : null;
+  // «Живой» месяц = выбран текущий И он ещё не завершён
+  const isLive = isCurrentMonth && daysElapsed < daysInMonth;
 
-  renderKPI(curData, prevData, sel.name, today, isCurrentMonth);
+  renderKPI(curData, prevData, sel.name, daysElapsed, daysInMonth, isLive);
   renderStores(stores, sel.name, isCurrentMonth);
-  renderInsights(curData, prevData, stores, sel.name, prev ? prev.name : '', today, isCurrentMonth);
+  renderInsights(curData, prevData, stores, sel.name, prev ? prev.name : '', daysElapsed, daysInMonth, isLive);
 
   // Обновляем графики года для выбранного месяца
   const yearMonths = allMonths.filter(m => m.year === sel.year);
@@ -338,10 +386,13 @@ async function renderSelectedMonth() {
   document.getElementById('titlePrevYear').textContent = `Выручка ${sel.year-1}`;
   document.getElementById('dailyTitle').textContent = `Ежедневная выручка — ${sel.name}`;
 
-  draw2026(yearData, sel.month);
-  drawPct(yearData, sel.month);
-  if (prevYearData.length) draw2025(prevYearData);
-  drawDaily(daily);
+  // requestAnimationFrame гарантирует ненулевые размеры canvas
+  requestAnimationFrame(() => {
+    draw2026(yearData, sel.month);
+    drawPct(yearData, sel.month);
+    if (prevYearData.length) draw2025(prevYearData);
+    drawDaily(daily);
+  });
 
   const now = new Date();
   document.getElementById('updateTime').textContent =
@@ -353,14 +404,12 @@ async function renderSelectedMonth() {
 // ============================================================
 // Рендер KPI
 // ============================================================
-function renderKPI(cur, prev, name, today, isCurrentMonth) {
-  const deficit = cur.fact - cur.plan;
-  const daysInMonth = 30;
-  const dayNum = today || daysInMonth;
-  const daysLeft = isCurrentMonth ? daysInMonth - dayNum : 0;
-  const dailyAvg = dayNum > 0 ? Math.round(cur.fact/dayNum/1000) : 0;
-  const needed = daysLeft > 0 ? Math.round((cur.plan-cur.fact)/daysLeft/1000) : 0;
-  const growth = prev&&prev.fact>0 ? ((cur.fact-prev.fact)/prev.fact*100).toFixed(1) : null;
+function renderKPI(cur, prev, name, daysElapsed, daysInMonth, isLive) {
+  const deficit  = cur.fact - cur.plan;
+  const daysLeft = Math.max(0, daysInMonth - daysElapsed);
+  const dailyAvg = daysElapsed > 0 ? Math.round(cur.fact / daysElapsed / 1000) : 0;
+  const needed   = isLive && daysLeft > 0 ? Math.round((cur.plan - cur.fact) / daysLeft / 1000) : 0;
+  const growth   = prev && prev.fact > 0 ? ((cur.fact - prev.fact) / prev.fact * 100).toFixed(1) : null;
 
   document.getElementById('kpiRow').innerHTML = `
     <div class="kpi-card blue">
@@ -370,22 +419,22 @@ function renderKPI(cur, prev, name, today, isCurrentMonth) {
       <span class="kpi-badge ${badgeClass(cur.pct)}">${cur.pct}% плана</span>
     </div>
     <div class="kpi-card amber">
-      <div class="kpi-label">${deficit>=0?'Опережение':'Дефицит'}</div>
+      <div class="kpi-label">${deficit >= 0 ? 'Опережение' : 'Дефицит'}</div>
       <div class="kpi-value">${fmtM(Math.abs(deficit))} млн</div>
-      <div class="kpi-sub">${isCurrentMonth?'осталось '+daysLeft+' дней':'итог месяца'}</div>
-      <span class="kpi-badge ${deficit>=0?'badge-green':'badge-red'}">${deficit>=0?'+':'–'}${Math.abs(Math.round(deficit/cur.plan*100))}%</span>
+      <div class="kpi-sub">${isLive ? 'осталось ' + daysLeft + ' дней' : 'итог месяца'}</div>
+      <span class="kpi-badge ${deficit >= 0 ? 'badge-green' : 'badge-red'}">${deficit >= 0 ? '+' : '–'}${Math.abs(Math.round(deficit / cur.plan * 100))}%</span>
     </div>
     <div class="kpi-card green">
       <div class="kpi-label">Ср. дневная выручка</div>
       <div class="kpi-value">${dailyAvg} тыс</div>
-      <div class="kpi-sub">за ${dayNum} дней${isCurrentMonth?' месяца':''}</div>
-      ${isCurrentMonth&&needed>0?`<span class="kpi-badge badge-amber">нужно ${needed} тыс/день</span>`:'<span class="kpi-badge badge-green">месяц завершён</span>'}
+      <div class="kpi-sub">за ${daysElapsed} из ${daysInMonth} дней</div>
+      ${isLive && needed > 0 ? `<span class="kpi-badge badge-amber">нужно ${needed} тыс/день</span>` : '<span class="kpi-badge badge-green">месяц завершён</span>'}
     </div>
     <div class="kpi-card purple">
       <div class="kpi-label">К прошлому месяцу</div>
-      <div class="kpi-value">${growth!==null?Math.abs(growth)+'%':'—'}</div>
-      <div class="kpi-sub">${prev?fmt(prev.fact)+' → '+fmt(cur.fact):''}</div>
-      <span class="kpi-badge ${growth!==null&&parseFloat(growth)>0?'badge-green':'badge-red'}">${growth!==null&&parseFloat(growth)>0?'▲ Рост':'▼ Снижение'}</span>
+      <div class="kpi-value">${growth !== null ? Math.abs(growth) + '%' : '—'}</div>
+      <div class="kpi-sub">${prev ? fmt(prev.fact) + ' → ' + fmt(cur.fact) : ''}</div>
+      <span class="kpi-badge ${growth !== null && parseFloat(growth) > 0 ? 'badge-green' : 'badge-red'}">${growth !== null && parseFloat(growth) > 0 ? '▲ Рост' : '▼ Снижение'}</span>
     </div>`;
 }
 
@@ -429,21 +478,20 @@ function renderStores(stores, name, isCurrentMonth) {
 // ============================================================
 // Инсайты
 // ============================================================
-function renderInsights(cur, prev, stores, name, prevName, today, isCurrentMonth) {
+function renderInsights(cur, prev, stores, name, prevName, daysElapsed, daysInMonth, isLive) {
   if (!stores.length) return;
-  const best=stores.reduce((a,b)=>a.pct>b.pct?a:b);
-  const worst=stores.reduce((a,b)=>a.pct<b.pct?a:b);
-  const dayNum = today || 30;
-  const daysLeft = isCurrentMonth ? 30 - dayNum : 0;
-  const dailyNeeded = daysLeft>0?Math.round((cur.plan-cur.fact)/daysLeft/1000):0;
-  const growth = prev&&prev.fact>0?((cur.fact-prev.fact)/prev.fact*100).toFixed(1):null;
-  const forecast = dayNum>0?Math.round(cur.fact/dayNum*30):0;
+  const best  = stores.reduce((a,b) => a.pct > b.pct ? a : b);
+  const worst = stores.reduce((a,b) => a.pct < b.pct ? a : b);
+  const daysLeft    = Math.max(0, daysInMonth - daysElapsed);
+  const dailyNeeded = isLive && daysLeft > 0 ? Math.round((cur.plan - cur.fact) / daysLeft / 1000) : 0;
+  const growth      = prev && prev.fact > 0 ? ((cur.fact - prev.fact) / prev.fact * 100).toFixed(1) : null;
+  const forecast    = daysElapsed > 0 ? Math.round(cur.fact / daysElapsed * daysInMonth) : cur.fact;
 
   document.getElementById('insightsRow').innerHTML = `
     <div class="insight-card">
       <div class="insight-icon" style="background:rgba(79,142,247,0.15)">📊</div>
       <div class="insight-title">Выполнение плана</div>
-      <div class="insight-text">${cur.pct}% от плана. ${cur.pct<80?'Значительное отставание.':cur.pct<95?'Умеренное отставание.':'Отличный результат!'} ${isCurrentMonth?'До конца месяца '+daysLeft+' дней.':'Месяц закрыт.'}</div>
+      <div class="insight-text">${cur.pct}% от плана. ${cur.pct<80?'Значительное отставание.':cur.pct<95?'Умеренное отставание.':'Отличный результат!'} ${isLive?'До конца месяца '+daysLeft+' дней.':'Месяц закрыт.'}</div>
     </div>
     <div class="insight-card">
       <div class="insight-icon" style="background:rgba(34,197,94,0.15)">🏆</div>
@@ -457,8 +505,8 @@ function renderInsights(cur, prev, stores, name, prevName, today, isCurrentMonth
     </div>
     <div class="insight-card">
       <div class="insight-icon" style="background:rgba(245,158,11,0.15)">🎯</div>
-      <div class="insight-title">${isCurrentMonth?'Дневная цель':'Средний день'}</div>
-      <div class="insight-text">${isCurrentMonth&&daysLeft>0?'Нужно '+dailyNeeded+' тыс ₽/день в оставшиеся '+daysLeft+' дней. Текущий темп: '+Math.round(cur.fact/dayNum/1000)+' тыс/день.':'Средняя дневная выручка: '+Math.round(cur.fact/dayNum/1000)+' тыс ₽/день.'}</div>
+      <div class="insight-title">${isLive?'Дневная цель':'Средний день'}</div>
+      <div class="insight-text">${isLive&&daysLeft>0?'Нужно '+dailyNeeded+' тыс ₽/день в оставшиеся '+daysLeft+' дней. Текущий темп: '+Math.round(cur.fact/daysElapsed/1000)+' тыс/день.':'Средняя дневная выручка: '+Math.round(cur.fact/daysElapsed/1000)+' тыс ₽/день.'}</div>
     </div>
     <div class="insight-card">
       <div class="insight-icon" style="background:${growth&&parseFloat(growth)>0?'rgba(34,197,94,0.15)':'rgba(239,68,68,0.15)'}">📈</div>
@@ -467,8 +515,8 @@ function renderInsights(cur, prev, stores, name, prevName, today, isCurrentMonth
     </div>
     <div class="insight-card">
       <div class="insight-icon" style="background:rgba(124,92,252,0.15)">💡</div>
-      <div class="insight-title">${isCurrentMonth?'Прогноз на конец месяца':'Итог месяца'}</div>
-      <div class="insight-text">${isCurrentMonth?'При текущем темпе к концу месяца факт ~'+fmt(forecast)+' — это '+Math.round(forecast/cur.plan*100)+'% от плана.':'Итоговое выполнение: '+cur.pct+'% от плана. Факт: '+fmt(cur.fact)+'.'}</div>
+      <div class="insight-title">${isLive?'Прогноз на конец месяца':'Итог месяца'}</div>
+      <div class="insight-text">${isLive?'При текущем темпе к концу месяца факт ~'+fmt(forecast)+' — это '+Math.round(forecast/cur.plan*100)+'% от плана.':'Итоговое выполнение: '+cur.pct+'% от плана. Факт: '+fmt(cur.fact)+'.'}</div>
     </div>`;
 }
 
