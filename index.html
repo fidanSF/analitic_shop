@@ -253,10 +253,13 @@ function parseMonthData(rows) {
     daysInMonth = num(rows[0]?.[7]) || 30;
     daysElapsed = num(rows[1]?.[7]) || daysInMonth;
   } else {
-    r           = rows[9] || [];
-    plan        = num(r[3]);
-    fact        = num(r[4]);
-    pctRaw      = r[5];
+    // 2025: итог мог переехать с строки [9] на [8] (сен-дек 2025)
+    // Выбираем строку с планом > 1М в col[3]
+    const r8 = rows[8] || [], r9 = rows[9] || [];
+    r       = num(r8[3]) > 1000000 ? r8 : r9;
+    plan    = num(r[3]);
+    fact    = num(r[4]);
+    pctRaw  = r[5];
     daysInMonth = num(rows[0]?.[6]) || 31;
     daysElapsed = num(rows[1]?.[6]) || daysInMonth;
   }
@@ -532,7 +535,7 @@ function draw2026(data, selectedMonth) {
     labels:data.map(d=>d.short),
     datasets:[
       {label:'Факт',data:data.map(d=>d.fact),backgroundColor:data.map((_,i)=>i===data.findIndex(d=>d.name===allMonths[selectedIndex]?.name)?'#22c55e':'#4f8ef7'),borderRadius:6,borderSkipped:false},
-      {label:'План',data:data.map(d=>d.plan),backgroundColor:'rgba(255,255,255,0.07)',borderRadius:6,borderSkipped:false,borderColor:'rgba(255,255,255,0.15)',borderWidth:1}
+      {label:'План',data:data.map(d=>d.plan),backgroundColor:'rgba(245,158,11,0.35)',borderRadius:6,borderSkipped:false,borderColor:'#f59e0b',borderWidth:1}
     ]
   },options:{responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+fmtM(c.raw)+'М ₽'}}},
