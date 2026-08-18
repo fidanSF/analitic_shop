@@ -34,15 +34,13 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
 .kpi{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.1rem 1.3rem;position:relative;overflow:hidden}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;border-radius:16px 16px 0 0}
 .kpi.blue::before{background:var(--accent)}.kpi.green::before{background:var(--green)}
-.kpi.amber::before{background:var(--amber)}.kpi.purple::before{background:var(--accent2)}
-.kpi.red::before{background:var(--red)}
+.kpi.amber::before{background:var(--amber)}.kpi.purple::before{background:var(--accent2)}.kpi.red::before{background:var(--red)}
 .kpi-label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
 .kpi-value{font-size:22px;font-weight:800;letter-spacing:-1px;line-height:1;margin-bottom:5px}
 .kpi-sub{font-size:11px;color:var(--muted2)}
 .kpi-badge{display:inline-flex;align-items:center;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-top:6px}
 .bg{background:rgba(34,197,94,.15);color:var(--green)}.ba{background:rgba(245,158,11,.15);color:var(--amber)}.br{background:rgba(239,68,68,.15);color:var(--red)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:1.5rem}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:1.5rem}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.4rem}
 .card.full{grid-column:1/-1}
 .card-title{font-size:13px;font-weight:700;margin-bottom:3px}
@@ -57,18 +55,14 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
 .bar-wrap{height:6px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;margin-top:10px}
 .bar-fill{height:100%;border-radius:3px}
 .pct-big{font-size:28px;font-weight:800;letter-spacing:-1px;margin:8px 0 4px}
-.daily-gap-section{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.4rem;margin-bottom:1.5rem}
+.gap-section{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.4rem;margin-bottom:1.5rem}
 .gap-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:1rem}
 .gap-table th{text-align:left;padding:8px 10px;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--border)}
 .gap-table td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.04);font-family:'JetBrains Mono',monospace}
 .gap-table tr:last-child td{border-bottom:none}
-.gap-bar{height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;margin-top:3px}
-.gap-fill{height:100%;border-radius:2px}
-.tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px}
-.tag-ok{background:rgba(34,197,94,.15);color:var(--green)}.tag-warn{background:rgba(245,158,11,.15);color:var(--amber)}.tag-bad{background:rgba(239,68,68,.15);color:var(--red)}
 .footer{text-align:center;padding:2rem;font-size:12px;color:var(--muted);border-top:1px solid var(--border)}
 @media(max-width:900px){
-  .kpi-row{grid-template-columns:1fr 1fr}.grid2,.grid3,.stores-grid{grid-template-columns:1fr}
+  .kpi-row{grid-template-columns:1fr 1fr}.grid2,.stores-grid{grid-template-columns:1fr}
   .card.full{grid-column:1}.container{padding:1rem}.header{padding:.75rem 1rem}
   .month-selector{order:3;width:100%;justify-content:center}
 }
@@ -97,28 +91,24 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
 <div id="content" style="display:none">
 <div class="container">
 
-  <!-- KPI ROW -->
   <div class="section-label">Ключевые показатели</div>
   <div class="kpi-row" id="kpiRow"></div>
 
-  <!-- STORES -->
   <div class="section-label">По магазинам</div>
   <div class="stores-grid" id="storesGrid"></div>
 
-  <!-- DAILY GAP TABLE -->
-  <div class="section-label">Дневной план — сколько нужно в день чтобы выйти на план</div>
-  <div class="daily-gap-section">
-    <div class="card-title">📊 Анализ выполнения · остаточный дневной план</div>
-    <div class="card-sub">Сколько нужно зарабатывать каждый оставшийся день месяца чтобы выйти на план</div>
+  <div class="section-label">Дневной план — сколько нужно зарабатывать каждый день чтобы выйти на план</div>
+  <div class="gap-section">
+    <div class="card-title">📊 Анализ остаточного дневного плана</div>
+    <div class="card-sub">Текущий темп vs необходимый темп для выполнения плана</div>
     <table class="gap-table" id="gapTable"></table>
   </div>
 
-  <!-- CHARTS ROW 1 -->
   <div class="section-label">Выручка</div>
   <div class="grid2">
     <div class="card full">
-      <div class="card-title" id="t1">Ежедневная выручка — текущий месяц</div>
-      <div class="card-sub">По магазинам · факт vs дневной план остаточный</div>
+      <div class="card-title" id="t1">Ежедневная выручка</div>
+      <div class="card-sub">По магазинам · рублей в день</div>
       <div style="position:relative;height:260px"><canvas id="cDaily"></canvas></div>
     </div>
     <div class="card">
@@ -133,27 +123,25 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
     </div>
   </div>
 
-  <!-- CHARTS ROW 2 — AVG CHECK -->
   <div class="section-label">Средний чек</div>
   <div class="grid2">
     <div class="card full">
-      <div class="card-title" id="t3">Средний чек по дням — текущий месяц</div>
+      <div class="card-title" id="t3">Средний чек по дням</div>
       <div class="card-sub">По каждому магазину · рублей на чек</div>
       <div style="position:relative;height:250px"><canvas id="cAvgDay"></canvas></div>
     </div>
     <div class="card">
-      <div class="card-title">Средний чек по месяцам — №1 Победы</div>
+      <div class="card-title">Средний чек — №1 Победы по месяцам</div>
       <div class="card-sub">Среднемесячный чек · динамика</div>
       <div style="position:relative;height:210px"><canvas id="cAvgM1"></canvas></div>
     </div>
     <div class="card">
-      <div class="card-title">Средний чек по месяцам — №2 и №3</div>
-      <div class="card-sub">Сравнение магазинов по среднему чеку</div>
+      <div class="card-title">Средний чек — №2 и №3 по месяцам</div>
+      <div class="card-sub">Сравнение магазинов</div>
       <div style="position:relative;height:210px"><canvas id="cAvgM23"></canvas></div>
     </div>
   </div>
 
-  <!-- CHARTS ROW 3 — CHECKS COUNT -->
   <div class="section-label">Количество чеков</div>
   <div class="grid2">
     <div class="card full">
@@ -171,7 +159,6 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
 const SHEET_ID = '19NRvFiXIUJ0BIsfW-ggkSKHaAEbWdlPvlHGLGIFyQGM';
 const MN = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const SH = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
-const C = ['#4f8ef7','#7c5cfc','#22c55e','#f59e0b'];
 Chart.defaults.color='#6b7280'; Chart.defaults.font.family='Manrope';
 
 const cache={};
@@ -182,59 +169,91 @@ function fetchCSV(s){
   if(cache[s]) return Promise.resolve(cache[s]);
   return new Promise((res,rej)=>Papa.parse(csvUrl(s),{download:true,complete:r=>{cache[s]=r.data;res(r.data);},error:rej}));
 }
-function n(v){if(!v&&v!==0)return 0;const x=parseFloat(String(v).replace(/\s/g,'').replace(',','.'));return isNaN(x)?0:x;}
-function fmt(v){if(!v)return'—';const m=Math.abs(v)/1000000;if(m>=1)return(Math.round(m*10)/10)+' млн ₽';return Math.round(Math.abs(v)/1000)+' тыс ₽';}
+
+// Парсим число: убираем пробелы, неразрывные пробелы, запятые→точки
+function n(v){
+  if(!v&&v!==0)return 0;
+  const s=String(v).replace(/\u00a0/g,'').replace(/\s/g,'').replace('%','').replace(',','.');
+  const x=parseFloat(s);
+  return isNaN(x)?0:x;
+}
+
+function fmt(v){
+  if(!v)return'—';
+  const m=Math.abs(v)/1000000;
+  if(m>=1)return(Math.round(m*10)/10)+' млн ₽';
+  return Math.round(Math.abs(v)/1000)+' тыс ₽';
+}
 function fmtM(v){return(v/1000000).toFixed(1)+'М';}
 function fmtK(v){return v>=1000?Math.round(v/1000)+'К':Math.round(v);}
-function pc(v){const x=n(v);return x<2&&x>0?Math.round(x*100):Math.round(x);}
 function pcc(p){return p>=100?'#22c55e':p>=70?'#f59e0b':'#ef4444';}
 function bc(p){return p>=100?'bg':p>=75?'ba':'br';}
 
-async function findMonths(){
-  const now=new Date(); const cy=now.getFullYear(); const cm=now.getMonth();
-  const cands=[];
-  for(let y=cy-1;y<=cy;y++)for(let m=0;m<12;m++){if(y===cy&&m>cm)continue;cands.push({name:`${MN[m]} ${y}`,y,m,sh:SH[m]});}
-  const res=await Promise.allSettled(cands.map(c=>fetchCSV(c.name).then(r=>({...c,rows:r}))));
-  return res.filter(r=>r.status==='fulfilled'&&r.value.rows&&r.value.rows.length>5).map(r=>r.value);
-}
+// ── СТРУКТУРА CSV (проверена по реальным данным) ──────────
+// Строка 3 = Магазин №1: col4=план, col5=факт, col6=%, col7=ср.день, col10=дневной остаток
+// Строка 4 = Магазин №2
+// Строка 5 = Магазин №3
+// Строка 8 = ИТОГО
+// Строки 9+ = дневные данные:
+//   col0=дата, col1=факт№1, col2=чеки№1, col4=факт№2, col5=чеки№2,
+//   col6=факт№3, col7=чеки№3, col8=ср.чек№1, col9=ср.чек№2, col10=ср.чек№3
 
 function parseMonth(rows){
-  const r=rows[9]||[];
-  return{plan:n(r[4]),fact:n(r[5]),pct:pc(r[6]),avgDay:n(r[7]),dayRemain:n(r[10])};
+  const r=rows[8]||[];
+  const plan=n(r[4]), fact=n(r[5]);
+  const pctRaw=n(r[6]);
+  const pct=pctRaw>0&&pctRaw<=1?Math.round(pctRaw*100):Math.round(pctRaw);
+  const avgDay=n(r[7]);
+  const dayRemain=n(r[10]);
+  return{plan,fact,pct,avgDay,dayRemain};
 }
 
 function parseStores(rows){
-  const s=[];
-  for(let i=4;i<=6;i++){
-    const r=rows[i]||[];
-    const nm=String(r[0]||'').trim();
-    if(!nm||nm.toLowerCase().includes('итого')||nm.startsWith('(')||nm.includes('РО№'))continue;
-    const plan=n(r[4]),fact=n(r[5]);
-    if(plan<100000)continue;
-    s.push({name:nm,plan,fact,pct:pc(r[6]),avgDay:n(r[7]),dayRemain:n(r[10])});
-  }
-  return s;
+  const names=['Магазин №1 (Победы)','Магазин №2 (Автоматики)','Магазин №3 (Орск)'];
+  const storeRows=[3,4,5];
+  return storeRows.map((ri,i)=>{
+    const r=rows[ri]||[];
+    const plan=n(r[4]), fact=n(r[5]);
+    const pctRaw=n(r[6]);
+    const pct=pctRaw>0&&pctRaw<=1?Math.round(pctRaw*100):Math.round(pctRaw);
+    const avgDay=n(r[7]);
+    const dayRemain=n(r[10]);
+    // Имя из самой строки или дефолт
+    const nm=String(r[0]||r[20]||names[i]).trim()||names[i];
+    return{name:nm||names[i],plan,fact,pct,avgDay,dayRemain};
+  }).filter(s=>s.plan>0);
 }
 
 function parseDaily(rows){
   const d=[];
-  for(let i=14;i<rows.length;i++){
+  // Дневные данные начинаются с строки 9
+  for(let i=9;i<rows.length;i++){
     const r=rows[i]||[];
     const ds=String(r[0]||'').trim();
-    if(!ds)break;
+    if(!ds||ds===''||ds==='0')break;
+    // Проверяем что это дата (содержит точку или слэш)
+    if(!ds.match(/\d/))continue;
     const f1=n(r[1]),f2=n(r[4]),f3=n(r[6]);
     const c1=n(r[2]),c2=n(r[5]),c3=n(r[7]);
     const a1=n(r[8]),a2=n(r[9]),a3=n(r[10]);
     if(f1+f2+f3===0)continue;
-    let day=i-13;
-    const mx=ds.match(/(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})/);
-    if(mx){const p=[parseInt(mx[1]),parseInt(mx[2]),parseInt(mx[3])];const fd=p.find(x=>x>=1&&x<=31);if(fd)day=fd;}
-    d.push({day,f1,f2,f3,c1,c2,c3,a1:a1||( c1>0?Math.round(f1/c1):0),a2:a2||(c2>0?Math.round(f2/c2):0),a3:a3||(c3>0?Math.round(f3/c3):0)});
+    // Извлекаем день из даты "01.07.2026"
+    let day=i-8;
+    const mx=ds.match(/^(\d{1,2})[\.\/]/);
+    if(mx)day=parseInt(mx[1]);
+    d.push({
+      day,
+      f1,f2,f3,
+      c1:Math.round(c1),c2:Math.round(c2),c3:Math.round(c3),
+      a1:a1>0?Math.round(a1):(c1>0?Math.round(f1/c1):0),
+      a2:a2>0?Math.round(a2):(c2>0?Math.round(f2/c2):0),
+      a3:a3>0?Math.round(a3):(c3>0?Math.round(f3/c3):0)
+    });
   }
   return d;
 }
 
-// ── NAV ────────────────────────────────────────────────
+// ── НАВИГАЦИЯ ───────────────────────────────────────────
 function nav(d){const ni=selIdx+d;if(ni>=0&&ni<allM.length){selIdx=ni;document.getElementById('msel').value=selIdx;renderSel();}}
 function selectM(v){selIdx=parseInt(v);renderSel();}
 function updNav(){
@@ -243,25 +262,32 @@ function updNav(){
   document.getElementById('curBadge').style.display=selIdx===latestIdx?'inline-flex':'none';
 }
 
-// ── KPI ────────────────────────────────────────────────
-function renderKPI(cur,prev,stores,today,isCur){
-  const def=cur.fact-cur.plan;
+async function findMonths(){
+  const now=new Date();const cy=now.getFullYear();const cm=now.getMonth();
+  const cands=[];
+  for(let y=cy-1;y<=cy;y++)for(let m=0;m<12;m++){if(y===cy&&m>cm)continue;cands.push({name:`${MN[m]} ${y}`,y,m,sh:SH[m]});}
+  const res=await Promise.allSettled(cands.map(c=>fetchCSV(c.name).then(r=>({...c,rows:r}))));
+  return res.filter(r=>r.status==='fulfilled'&&r.value.rows&&r.value.rows.length>5).map(r=>r.value);
+}
+
+// ── KPI ─────────────────────────────────────────────────
+function renderKPI(cur,prev,today,isCur){
   const din=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate();
   const dl=isCur?din-today:0;
   const avg=today>0?Math.round(cur.fact/today/1000):0;
   const need=dl>0?Math.round((cur.plan-cur.fact)/dl/1000):0;
+  const def=cur.fact-cur.plan;
   const gr=prev&&prev.fact>0?((cur.fact-prev.fact)/prev.fact*100).toFixed(1):null;
   const forecast=today>0?Math.round(cur.fact/today*din):0;
-
   document.getElementById('kpiRow').innerHTML=`
     <div class="kpi blue"><div class="kpi-label">Факт</div><div class="kpi-value">${fmtM(cur.fact)}М</div><div class="kpi-sub">план ${fmtM(cur.plan)}М</div><span class="kpi-badge ${bc(cur.pct)}">${cur.pct}%</span></div>
     <div class="kpi ${def>=0?'green':'red'}"><div class="kpi-label">${def>=0?'Опережение':'Дефицит'}</div><div class="kpi-value">${fmtM(Math.abs(def))}М</div><div class="kpi-sub">${isCur?'осталось '+dl+' дней':'итог месяца'}</div><span class="kpi-badge ${def>=0?'bg':'br'}">${def>=0?'+':'–'}${Math.abs(Math.round(def/cur.plan*100))}%</span></div>
     <div class="kpi amber"><div class="kpi-label">Ср. день факт</div><div class="kpi-value">${avg} тыс</div><div class="kpi-sub">за ${today} дней</div>${isCur&&need>0?`<span class="kpi-badge ba">нужно ${need} тыс/д</span>`:'<span class="kpi-badge bg">закрыт</span>'}</div>
     <div class="kpi purple"><div class="kpi-label">К прошлому мес.</div><div class="kpi-value">${gr!==null?Math.abs(gr)+'%':'—'}</div><div class="kpi-sub">${prev?fmt(prev.fact)+' → '+fmt(cur.fact):''}</div><span class="kpi-badge ${gr!==null&&parseFloat(gr)>0?'bg':'br'}">${gr!==null&&parseFloat(gr)>0?'▲ Рост':'▼ Снижение'}</span></div>
-    <div class="kpi ${forecast>=cur.plan?'green':'amber'}"><div class="kpi-label">Прогноз к концу</div><div class="kpi-value">${fmtM(forecast)}М</div><div class="kpi-sub">при текущем темпе</div><span class="kpi-badge ${forecast>=cur.plan?'bg':forecast>=cur.plan*0.9?'ba':'br'}">${Math.round(forecast/cur.plan*100)}% плана</span></div>`;
+    <div class="kpi ${forecast>=cur.plan?'green':'amber'}"><div class="kpi-label">Прогноз к концу</div><div class="kpi-value">${fmtM(forecast)}М</div><div class="kpi-sub">при текущем темпе</div><span class="kpi-badge ${forecast>=cur.plan?'bg':forecast>=cur.plan*.9?'ba':'br'}">${Math.round(forecast/cur.plan*100)}% плана</span></div>`;
 }
 
-// ── STORES ─────────────────────────────────────────────
+// ── МАГАЗИНЫ ─────────────────────────────────────────────
 function renderStores(stores,isCur){
   const sc=['#4f8ef7','#7c5cfc','#22c55e'];
   document.getElementById('storesGrid').innerHTML=stores.map((s,i)=>`
@@ -273,72 +299,74 @@ function renderStores(stores,isCur){
         <div class="store-stat"><span class="stat-label">План</span><span class="stat-value">${fmt(s.plan)}</span></div>
         <div class="store-stat"><span class="stat-label">Факт</span><span class="stat-value">${fmt(s.fact)}</span></div>
         <div class="store-stat"><span class="stat-label">Ср. дневная</span><span class="stat-value">${Math.round(s.avgDay/1000)} тыс/д</span></div>
-        <div class="store-stat"><span class="stat-label">${s.dayRemain<0?'Перевыполнение':'Нужно в день'}</span><span class="stat-value" style="color:${s.dayRemain<0?'var(--green)':'var(--amber)'}">${Math.abs(Math.round(s.dayRemain/1000))} тыс</span></div>
-        <div class="store-stat"><span class="stat-label">${s.fact<s.plan?'Осталось до плана':'Перевыполнено'}</span><span class="stat-value" style="color:${s.fact>=s.plan?'var(--green)':'var(--red)'}">${fmt(Math.abs(s.plan-s.fact))}</span></div>
+        <div class="store-stat"><span class="stat-label">${s.dayRemain<0?'Перевыполнено':'Нужно/день'}</span><span class="stat-value" style="color:${s.dayRemain<0?'var(--green)':'var(--amber)'}">${Math.abs(Math.round(s.dayRemain/1000))} тыс</span></div>
+        <div class="store-stat"><span class="stat-label">${s.fact<s.plan?'До плана':'Перевыполнение'}</span><span class="stat-value" style="color:${s.fact>=s.plan?'var(--green)':'var(--red)'}">${fmt(Math.abs(s.plan-s.fact))}</span></div>
       </div>
     </div>`).join('');
 }
 
-// ── GAP TABLE ──────────────────────────────────────────
-function renderGap(stores,isCur,today,daysInMonth){
-  const dl=isCur?daysInMonth-today:0;
+// ── GAP TABLE ─────────────────────────────────────────────
+function renderGap(stores,isCur,today,din){
+  const dl=isCur?din-today:0;
   const rows=stores.map(s=>{
     const remain=s.plan-s.fact;
-    const needPerDay=dl>0?Math.round(remain/dl):0;
     const curPace=today>0?Math.round(s.fact/today):0;
+    const needPerDay=dl>0?Math.round(remain/dl):0;
     const gap=needPerDay-curPace;
-    const feasible=gap<=0?'✅ Достижимо':gap<50000?'🟡 Напряжённо':'🔴 Сложно';
-    return `<tr>
+    const tag=!isCur?'—':gap<=0?'<span style="color:var(--green)">✅ Достижимо</span>':gap<50000?'<span style="color:var(--amber)">🟡 Напряжённо</span>':'<span style="color:var(--red)">🔴 Сложно</span>';
+    return`<tr>
       <td style="color:var(--text);font-family:'Manrope',sans-serif;font-weight:600">${s.name.replace('Магазин ','')}</td>
       <td>${fmt(s.plan)}</td>
       <td>${fmt(s.fact)}</td>
-      <td style="color:${s.fact>=s.plan?'var(--green)':'var(--red)'}">${fmt(Math.abs(remain))}</td>
+      <td style="color:${remain<=0?'var(--green)':'var(--red)'}">${fmt(Math.abs(remain))}</td>
       <td>${fmtK(curPace)} ₽/д</td>
       <td style="color:var(--amber)">${dl>0?fmtK(needPerDay)+' ₽/д':'—'}</td>
-      <td style="color:${gap<=0?'var(--green)':gap<50000?'var(--amber)':'var(--red)'}">${dl>0?(gap>0?'+'+fmtK(gap):fmtK(Math.abs(gap)))+' ₽/д':'—'}</td>
-      <td>${isCur?feasible:'—'}</td>
+      <td style="color:${gap<=0?'var(--green)':gap<50000?'var(--amber)':'var(--red)'}">${dl>0?(gap>0?'+':'')+fmtK(gap)+' ₽/д':'—'}</td>
+      <td>${tag}</td>
     </tr>`;
   }).join('');
   document.getElementById('gapTable').innerHTML=`
-    <tr><th>Магазин</th><th>План</th><th>Факт</th><th>Остаток</th><th>Тек. темп</th><th>Нужно/день</th><th>Разрыв/день</th><th>Оценка</th></tr>
-    ${rows}`;
+    <tr><th>Магазин</th><th>План</th><th>Факт</th><th>Остаток</th><th>Тек. темп</th><th>Нужно/день</th><th>Разрыв/день</th><th>Оценка</th></tr>${rows}`;
 }
 
-// ── CHARTS ─────────────────────────────────────────────
+// ── ГРАФИКИ ───────────────────────────────────────────────
 let ch={};
 function mk(id,cfg){if(ch[id])ch[id].destroy();ch[id]=new Chart(document.getElementById(id),cfg);}
 const gc='rgba(255,255,255,.04)',bc2='rgba(255,255,255,.07)',tt={backgroundColor:'#1a1d26',borderColor:'rgba(255,255,255,.1)',borderWidth:1};
 
-function drawDaily(days,dayRemains){
-  // dayRemains = daily needed to hit plan
+function drawDaily(days){
   mk('cDaily',{type:'bar',data:{
     labels:days.map(d=>d.day),
     datasets:[
-      {label:'№1 Победы',data:days.map(d=>d.f1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'fact'},
-      {label:'№2 Автоматики',data:days.map(d=>d.f2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'fact'},
-      {label:'№3 Орск',data:days.map(d=>d.f3),backgroundColor:'#22c55e',borderRadius:3,stack:'fact'},
+      {label:'№1 Победы',data:days.map(d=>d.f1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
+      {label:'№2 Автоматики',data:days.map(d=>d.f2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
+      {label:'№3 Орск',data:days.map(d=>d.f3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
     ]
   },options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+Math.round(c.raw/1000)+'тыс'}}},
-    scales:{x:{stacked:true,ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2},title:{display:true,text:'День месяца',color:'#6b7280',font:{size:11}}},y:{stacked:true,ticks:{callback:v=>Math.round(v/1000)+'К',color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},
+      tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+Math.round(c.raw/1000)+'тыс'}}},
+    scales:{x:{stacked:true,ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2},title:{display:true,text:'День месяца',color:'#6b7280',font:{size:11}}},
+      y:{stacked:true,ticks:{callback:v=>Math.round(v/1000)+'К',color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
   }});
 }
 
 function drawCumul(days,plan){
   let cum=0;
   const cumData=days.map(d=>{cum+=d.f1+d.f2+d.f3;return Math.round(cum);});
-  const daysTotal=31;
-  const dailyPlan=Math.round(plan/daysTotal);
+  const din=days.length>0?Math.max(...days.map(d=>d.day)):31;
+  const dailyPlan=Math.round(plan/31);
   const planLine=days.map((_,i)=>dailyPlan*(i+1));
   mk('cCumul',{type:'line',data:{
     labels:days.map(d=>d.day),
     datasets:[
-      {label:'Накопительный факт',data:cumData,borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,.1)',tension:.3,fill:true,pointRadius:0},
-      {label:'Плановая линия',data:planLine,borderColor:'rgba(245,158,11,.5)',borderDash:[5,4],pointRadius:0,borderWidth:1.5}
+      {label:'Накопит. факт',data:cumData,borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,.1)',tension:.3,fill:true,pointRadius:0},
+      {label:'Плановая линия',data:planLine,borderColor:'rgba(245,158,11,.6)',borderDash:[5,4],pointRadius:0,borderWidth:1.5}
     ]
   },options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10}},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+fmtM(c.raw)+'М ₽'}}},
-    scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2}},y:{ticks:{callback:fmtM,color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10}},
+      tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+fmtM(c.raw)+'М ₽'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2}},
+      y:{ticks:{callback:fmtM,color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
   }});
 }
 
@@ -350,78 +378,88 @@ function drawMonthly(months){
       {label:'План',data:months.map(m=>m.plan),backgroundColor:'rgba(255,255,255,.06)',borderRadius:5,borderSkipped:false,borderColor:'rgba(255,255,255,.15)',borderWidth:1}
     ]
   },options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+fmtM(c.raw)+'М ₽ ('+c.raw+')'}}},
-    scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:30},grid:{color:gc},border:{color:bc2}},y:{ticks:{callback:fmtM,color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+fmtM(c.raw)+'М'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:30},grid:{color:gc},border:{color:bc2}},
+      y:{ticks:{callback:fmtM,color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
   }});
 }
 
 function drawAvgDay(days){
-  const filtered=days.filter(d=>d.a1>0||d.a2>0||d.a3>0);
+  const f=days.filter(d=>d.a1>0||d.a2>0||d.a3>0);
   mk('cAvgDay',{type:'line',data:{
-    labels:filtered.map(d=>d.day),
+    labels:f.map(d=>d.day),
     datasets:[
-      {label:'№1 Победы',data:filtered.map(d=>d.a1),borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,.08)',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#4f8ef7'},
-      {label:'№2 Автоматики',data:filtered.map(d=>d.a2),borderColor:'#7c5cfc',backgroundColor:'rgba(124,92,252,.08)',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#7c5cfc'},
-      {label:'№3 Орск',data:filtered.map(d=>d.a3),borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.08)',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#22c55e'},
+      {label:'№1 Победы',data:f.map(d=>d.a1),borderColor:'#4f8ef7',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#4f8ef7'},
+      {label:'№2 Автоматики',data:f.map(d=>d.a2),borderColor:'#7c5cfc',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#7c5cfc'},
+      {label:'№3 Орск',data:f.map(d=>d.a3),borderColor:'#22c55e',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#22c55e'},
     ]
   },options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+Math.round(c.raw).toLocaleString('ru')+' ₽/чек'}}},
-    scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2},title:{display:true,text:'День месяца',color:'#6b7280'}},y:{ticks:{callback:v=>Math.round(v/1000)+'К ₽',color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},
+      tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+Math.round(c.raw).toLocaleString('ru')+' ₽'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2},title:{display:true,text:'День месяца',color:'#6b7280'}},
+      y:{ticks:{callback:v=>Math.round(v/1000)+'К ₽',color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
   }});
 }
 
-function drawAvgMonths(months,store){
-  // store: 1,2,3
-  const key='a'+store;
-  const clr=store===1?'#4f8ef7':store===2?'#7c5cfc':'#22c55e';
-  const data=months.map(m=>{
-    const rows=cache[m.name]||[];
-    let sum=0,cnt=0;
-    for(let i=14;i<rows.length;i++){
-      const r=rows[i]||[];const ds=String(r[0]||'').trim();if(!ds)break;
-      const f=n(r[store===1?1:store===2?4:6]);
-      const c=n(r[store===1?2:store===2?5:7]);
-      if(c>0){sum+=f/c;cnt++;}
-    }
-    return cnt>0?Math.round(sum/cnt):0;
-  }).filter((_,i)=>months[i]);
-  const cid=store===1?'cAvgM1':'cAvgM23';
-  if(store>1){
-    if(ch[cid])ch[cid].destroy();
-    ch[cid]=new Chart(document.getElementById(cid),{type:'bar',data:{
-      labels:months.map(m=>m.sh+' '+m.y),
-      datasets:[
-        {label:'№2 Автоматики',data:months.map(m=>{const rows=cache[m.name]||[];let s=0,c=0;for(let i=14;i<rows.length;i++){const r=rows[i]||[];const ds=String(r[0]||'').trim();if(!ds)break;const f=n(r[4]),cc=n(r[5]);if(cc>0){s+=f/cc;c++;}}return c>0?Math.round(s/c):0;}),backgroundColor:'#7c5cfc',borderRadius:4,borderSkipped:false},
-        {label:'№3 Орск',data:months.map(m=>{const rows=cache[m.name]||[];let s=0,c=0;for(let i=14;i<rows.length;i++){const r=rows[i]||[];const ds=String(r[0]||'').trim();if(!ds)break;const f=n(r[6]),cc=n(r[7]);if(cc>0){s+=f/cc;c++;}}return c>0?Math.round(s/c):0;}),backgroundColor:'#22c55e',borderRadius:4,borderSkipped:false}
-      ]
-    },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10}},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+c.raw.toLocaleString('ru')+' ₽/чек'}}},scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:30},grid:{color:gc},border:{color:bc2}},y:{ticks:{callback:v=>v.toLocaleString('ru'),color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}}});
-    return;
+function calcMonthAvgCheck(rows,col_f,col_c){
+  let sum=0,cnt=0;
+  for(let i=9;i<rows.length;i++){
+    const r=rows[i]||[];
+    const ds=String(r[0]||'').trim();
+    if(!ds||!ds.match(/\d/))break;
+    const f=n(r[col_f]),c=n(r[col_c]);
+    if(c>0){sum+=f/c;cnt++;}
   }
-  mk(cid,{type:'bar',data:{
-    labels:months.map(m=>m.sh+' '+m.y),
-    datasets:[{label:'Ср. чек №1',data,backgroundColor:clr,borderRadius:4,borderSkipped:false}]
+  return cnt>0?Math.round(sum/cnt):0;
+}
+
+function drawAvgMonths(months){
+  const avg1=months.map(m=>calcMonthAvgCheck(cache[m.name]||[],1,2));
+  const avg2=months.map(m=>calcMonthAvgCheck(cache[m.name]||[],4,5));
+  const avg3=months.map(m=>calcMonthAvgCheck(cache[m.name]||[],6,7));
+  const labs=months.map(m=>m.sh+' '+m.y);
+
+  mk('cAvgM1',{type:'bar',data:{
+    labels:labs,
+    datasets:[{label:'Ср. чек №1',data:avg1,backgroundColor:'#4f8ef7',borderRadius:4,borderSkipped:false}]
   },options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.raw.toLocaleString('ru')+' ₽/чек'}}},
-    scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:30},grid:{color:gc},border:{color:bc2}},y:{ticks:{callback:v=>v.toLocaleString('ru'),color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+    plugins:{legend:{display:false},tooltip:{...tt,callbacks:{label:c=>c.raw.toLocaleString('ru')+' ₽'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:30},grid:{color:gc},border:{color:bc2}},
+      y:{ticks:{callback:v=>v.toLocaleString('ru'),color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+  }});
+
+  mk('cAvgM23',{type:'bar',data:{
+    labels:labs,
+    datasets:[
+      {label:'№2 Автоматики',data:avg2,backgroundColor:'#7c5cfc',borderRadius:4,borderSkipped:false},
+      {label:'№3 Орск',data:avg3,backgroundColor:'#22c55e',borderRadius:4,borderSkipped:false}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10}},
+      tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+c.raw.toLocaleString('ru')+' ₽'}}},
+    scales:{x:{ticks:{color:'#6b7280',font:{size:10},maxRotation:30},grid:{color:gc},border:{color:bc2}},
+      y:{ticks:{callback:v=>v.toLocaleString('ru'),color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
   }});
 }
 
 function drawChecks(days){
-  const filtered=days.filter(d=>d.c1>0||d.c2>0||d.c3>0);
+  const f=days.filter(d=>d.c1>0||d.c2>0||d.c3>0);
   mk('cChecks',{type:'bar',data:{
-    labels:filtered.map(d=>d.day),
+    labels:f.map(d=>d.day),
     datasets:[
-      {label:'№1 Победы',data:filtered.map(d=>d.c1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
-      {label:'№2 Автоматики',data:filtered.map(d=>d.c2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
-      {label:'№3 Орск',data:filtered.map(d=>d.c3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
+      {label:'№1 Победы',data:f.map(d=>d.c1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
+      {label:'№2 Автоматики',data:f.map(d=>d.c2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
+      {label:'№3 Орск',data:f.map(d=>d.c3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
     ]
   },options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+c.raw+' чеков'}}},
-    scales:{x:{stacked:true,ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2},title:{display:true,text:'День месяца',color:'#6b7280'}},y:{stacked:true,ticks:{color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
+    plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},
+      tooltip:{...tt,callbacks:{label:c=>c.dataset.label+': '+c.raw+' чеков'}}},
+    scales:{x:{stacked:true,ticks:{color:'#6b7280',font:{size:10}},grid:{color:gc},border:{color:bc2},title:{display:true,text:'День месяца',color:'#6b7280'}},
+      y:{stacked:true,ticks:{color:'#6b7280'},grid:{color:gc},border:{color:bc2}}}
   }});
 }
 
-// ── MAIN RENDER ────────────────────────────────────────
+// ── РЕНДЕР МЕСЯЦА ─────────────────────────────────────────
 async function renderSel(){
   const sel=allM[selIdx];if(!sel)return;
   updNav();
@@ -440,25 +478,21 @@ async function renderSel(){
   const today=isCur?new Date().getDate():daily.length;
   const din=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate();
 
-  // titles
   document.getElementById('t1').textContent=`Ежедневная выручка — ${sel.name}`;
   document.getElementById('t2').textContent=`Накопительная выручка vs план — ${sel.name}`;
   document.getElementById('t3').textContent=`Средний чек по дням — ${sel.name}`;
   document.getElementById('t4').textContent=`Количество чеков по дням — ${sel.name}`;
 
-  renderKPI(cur,prvD,stores,today,isCur);
+  renderKPI(cur,prvD,today,isCur);
   renderStores(stores,isCur);
   renderGap(stores,isCur,today,din);
-
-  drawDaily(daily,stores.map(s=>s.dayRemain));
+  drawDaily(daily);
   drawCumul(daily,cur.plan);
 
-  // monthly charts — all months data
   const monthlyData=allM.map(m=>({...parseMonth(cache[m.name]||[]),sh:m.sh,y:m.y,name:m.name}));
   drawMonthly(monthlyData);
   drawAvgDay(daily);
-  drawAvgMonths(allM,1);
-  drawAvgMonths(allM,2);
+  drawAvgMonths(allM);
   drawChecks(daily);
 
   const now=new Date();
@@ -466,7 +500,7 @@ async function renderSel(){
   document.getElementById('kpiRow').style.opacity='1';
 }
 
-// ── INIT ───────────────────────────────────────────────
+// ── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────────────
 async function init(){
   try{
     document.getElementById('loaderText').textContent='Загружаем список месяцев...';
@@ -474,7 +508,7 @@ async function init(){
     if(!allM.length)throw new Error('Нет данных. Открой доступ к таблице: Настройки доступа → Все у кого есть ссылка → Читатель');
     const sel=document.getElementById('msel');
     sel.innerHTML=allM.map((m,i)=>`<option value="${i}">${m.name}</option>`).join('');
-    latestIdx=allM.length-1; selIdx=latestIdx; sel.value=selIdx;
+    latestIdx=allM.length-1;selIdx=latestIdx;sel.value=selIdx;
     document.getElementById('loader').style.display='none';
     document.getElementById('content').style.display='block';
     await renderSel();
