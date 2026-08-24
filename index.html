@@ -66,6 +66,14 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
   .card.full{grid-column:1}.container{padding:1rem}.header{padding:.75rem 1rem}
   .month-selector{order:3;width:100%;justify-content:center}
 }
+
+  .metric-btn{background:var(--bg3);border:1px solid var(--border);color:var(--muted2);padding:7px 12px;border-radius:8px;cursor:pointer;font-family:'Manrope',sans-serif;font-size:12px;font-weight:600;text-align:left;transition:all .2s;width:100%}
+  .metric-btn:hover{border-color:var(--accent);color:var(--text)}
+  .metric-btn.active{background:var(--accent);border-color:var(--accent);color:white}
+  .year-btn{background:var(--bg3);border:1px solid var(--border);color:var(--muted2);padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;transition:all .2s;width:100%;text-align:left}
+  .year-btn:hover{border-color:var(--accent);color:var(--text)}
+  .year-btn.active{border-width:2px}
+
 </style>
 </head>
 <body>
@@ -152,6 +160,37 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
   </div>
 
 </div>
+
+  <div class="section-label" style="margin-top:2rem">Сравнение периодов</div>
+  <div class="card full" style="margin-bottom:2rem">
+    <div style="display:flex;align-items:flex-start;gap:1.5rem;flex-wrap:wrap">
+      <div style="min-width:180px;flex-shrink:0">
+        <div class="card-title" style="margin-bottom:10px">📊 Показатель</div>
+        <div id="metricBtns" style="display:flex;flex-direction:column;gap:5px">
+          <button class="metric-btn active" onclick="setMetric('fact')" data-m="fact">💰 Выручка (факт)</button>
+          <button class="metric-btn" onclick="setMetric('plan')" data-m="plan">🎯 Выручка (план)</button>
+          <button class="metric-btn" onclick="setMetric('pct')" data-m="pct">📈 % выполнения</button>
+          <button class="metric-btn" onclick="setMetric('avg_check')" data-m="avg_check">🧾 Средний чек</button>
+          <button class="metric-btn" onclick="setMetric('checks')" data-m="checks">🔢 Кол-во чеков</button>
+          <button class="metric-btn" onclick="setMetric('avg_day')" data-m="avg_day">📅 Ср. день</button>
+        </div>
+        <div class="card-title" style="margin:16px 0 10px">📅 Годы для сравнения</div>
+        <div id="yearBtns" style="display:flex;flex-direction:column;gap:5px"></div>
+        <div class="card-title" style="margin:16px 0 10px">📐 Тип графика</div>
+        <div style="display:flex;gap:6px">
+          <button class="metric-btn active" id="btnLine" onclick="setChartType('line')" style="flex:1">〰️ Линия</button>
+          <button class="metric-btn" id="btnBar" onclick="setChartType('bar')" style="flex:1">📊 Столбцы</button>
+        </div>
+      </div>
+      <div style="flex:1;min-width:300px">
+        <div id="compareTitle" class="card-title" style="margin-bottom:3px;font-size:15px">Сравнение выручки по годам</div>
+        <div id="compareSub" class="card-sub">Помесячно · рублей</div>
+        <div style="position:relative;height:340px"><canvas id="cCompare"></canvas></div>
+        <div id="compareLegendNote" style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center"></div>
+      </div>
+    </div>
+  </div>
+
 <div class="footer">Аналитика продаж · Вольтмаркет · Обновляется автоматически каждые 5 минут</div>
 </div>
 
@@ -218,8 +257,8 @@ function parseStores(rows){
     const pct=pctRaw>0&&pctRaw<=1?Math.round(pctRaw*100):Math.round(pctRaw);
     const avgDay=n(r[7]);
     const dayRemain=n(r[10]);
-    // Имя из самой строки или дефолт
-    const nm=String(r[0]||r[20]||names[i]).trim()||names[i];
+    // Имя магазина находится в col 20
+    const nm=String(r[20]||names[i]).trim()||names[i];
     return{name:nm||names[i],plan,fact,pct,avgDay,dayRemain};
   }).filter(s=>s.plan>0);
 }
@@ -524,8 +563,203 @@ async function init(){
   }
 }
 
-init();
+
+// ════════════════════════════════════════════════════════
+// БЛОК СРАВНЕНИЯ ПЕРИОДОВ
+// ════════════════════════════════════════════════════════
+const YEAR_COLORS = {2022:'#6b7280',2023:'#9ca3af',2024:'#f59e0b',2025:'#4f8ef7',2026:'#22c55e'};
+const ALL_MN2=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const ALL_SH2=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+
+let curMetric='fact', selYears=new Set([2024,2025,2026]), cmpType='line';
+
+const MLABELS={
+  fact:{label:'Выручка — факт',sub:'Помесячно · рублей'},
+  plan:{label:'Выручка — план',sub:'Помесячно · рублей'},
+  pct:{label:'% выполнения плана',sub:'Помесячно · %'},
+  avg_check:{label:'Средний чек',sub:'Среднемесячный чек · рублей'},
+  checks:{label:'Количество чеков',sub:'Помесячно · штук'},
+  avg_day:{label:'Ср. дневная выручка',sub:'Помесячно · рублей в день'},
+};
+
+function setMetric(m){
+  curMetric=m;
+  document.querySelectorAll('[data-m]').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
+  drawCompare();
+}
+
+function setChartType(t){
+  cmpType=t;
+  document.getElementById('btnLine').classList.toggle('active',t==='line');
+  document.getElementById('btnBar').classList.toggle('active',t==='bar');
+  drawCompare();
+}
+
+function toggleYear(y){
+  if(selYears.has(y)){if(selYears.size>1)selYears.delete(y);}
+  else selYears.add(y);
+  document.querySelectorAll('.year-btn').forEach(b=>{
+    const active=selYears.has(parseInt(b.dataset.y));
+    const c=YEAR_COLORS[b.dataset.y]||'#9ca3af';
+    b.classList.toggle('active',active);
+    b.style.borderColor=active?c:'var(--border)';
+    b.style.color=active?c:'var(--muted2)';
+  });
+  drawCompare();
+}
+
+function initYearBtns(){
+  const years=[...new Set(allM.map(m=>m.y))].sort((a,b)=>b-a);
+  // Добавляем 2022-2023 если они могут быть в таблице
+  [2023,2022].forEach(y=>{if(!years.includes(y))years.unshift(y);});
+  years.sort((a,b)=>b-a);
+  document.getElementById('yearBtns').innerHTML=years.map(y=>{
+    const c=YEAR_COLORS[y]||'#9ca3af';
+    const active=selYears.has(y);
+    return `<button class="year-btn ${active?'active':''}" onclick="toggleYear(${y})" data-y="${y}"
+      style="border-color:${active?c:'var(--border)'};color:${active?c:'var(--muted2)'}">
+      ● ${y}
+    </button>`;
+  }).join('');
+}
+
+function getSheetName(month0, year){
+  // month0 = 0-based month index
+  const mn=ALL_MN2[month0];
+  const lo=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+  if(year===2022) return lo[month0]+' 22';
+  if(year===2023) return lo[month0]+' 2023';
+  if(year===2024 && month0===11) return 'Декабрь 2024 '; // с пробелом
+  return mn+' '+year;
+}
+
+async function getVal(sheetName, metric){
+  let rows=null;
+  // Пробуем несколько вариантов названия
+  const tries=[sheetName, sheetName.trim(), sheetName.trim()+' '];
+  for(const t of tries){
+    try{
+      const r=await fetchCSV(t);
+      if(r&&r.length>8){rows=r;break;}
+    }catch(e){}
+  }
+  if(!rows||rows.length<9)return null;
+  const it=rows[8]||[];
+  switch(metric){
+    case 'fact': return n(it[5])||null;
+    case 'plan': return n(it[4])||null;
+    case 'pct':{const p=n(it[6]);return p>0?(p<=1?Math.round(p*100):Math.round(p)):null;}
+    case 'avg_day':{const v=n(it[7]);return v>0?Math.round(v/1000):null;}
+    case 'avg_check':{
+      let s=0,c=0;
+      for(let i=9;i<rows.length;i++){
+        const r=rows[i]||[];if(!String(r[0]||'').match(/\d/))break;
+        const f=n(r[1])+n(r[4])+n(r[6]),ck=n(r[2])+n(r[5])+n(r[7]);
+        if(ck>0){s+=f/ck;c++;}
+      }
+      return c>0?Math.round(s/c):null;
+    }
+    case 'checks':{
+      let t=0;
+      for(let i=9;i<rows.length;i++){
+        const r=rows[i]||[];if(!String(r[0]||'').match(/\d/))break;
+        t+=n(r[2])+n(r[5])+n(r[7]);
+      }
+      return t>0?Math.round(t):null;
+    }
+  }
+  return null;
+}
+
+async function drawCompare(){
+  const info=MLABELS[curMetric];
+  document.getElementById('compareTitle').textContent='Сравнение: '+info.label;
+  document.getElementById('compareSub').textContent=info.sub;
+  document.getElementById('compareLegendNote').textContent='Загружаем данные...';
+
+  const years=[...selYears].sort();
+  const now=new Date();
+  const datasets=[];
+
+  for(const year of years){
+    const color=YEAR_COLORS[year]||'#9ca3af';
+    const data=[];
+    for(let m=0;m<12;m++){
+      if(year===now.getFullYear()&&m>now.getMonth()){data.push(null);continue;}
+      const sn=getSheetName(m,year);
+      const v=await getVal(sn,curMetric);
+      data.push(v);
+    }
+    const hasData=data.some(v=>v!==null);
+    if(!hasData)continue;
+    datasets.push({
+      label:String(year),
+      data,
+      borderColor:color,
+      backgroundColor:cmpType==='line'?color+'20':color+'cc',
+      tension:0.35,
+      fill:cmpType==='line'&&false,
+      pointRadius:5,
+      pointBackgroundColor:color,
+      pointBorderColor:'#0a0b0f',
+      pointBorderWidth:2,
+      borderWidth:2.5,
+      borderRadius:cmpType==='bar'?4:0,
+      borderSkipped:false,
+      spanGaps:true,
+    });
+  }
+
+  let yFmt,tipFmt;
+  if(curMetric==='fact'||curMetric==='plan'){
+    yFmt=v=>v>=1000000?(v/1000000).toFixed(1)+'М':Math.round(v/1000)+'К';
+    tipFmt=v=>(v/1000000).toFixed(2)+' млн ₽';
+  } else if(curMetric==='pct'){
+    yFmt=v=>v+'%'; tipFmt=v=>v+'%';
+  } else if(curMetric==='avg_check'){
+    yFmt=v=>v>=1000?Math.round(v/1000)+'К':v;
+    tipFmt=v=>v.toLocaleString('ru')+' ₽';
+  } else if(curMetric==='checks'){
+    yFmt=v=>v+' шт'; tipFmt=v=>v+' чеков';
+  } else {
+    yFmt=v=>v+' тыс'; tipFmt=v=>v+' тыс ₽/д';
+  }
+
+  if(ch['cCompare'])ch['cCompare'].destroy();
+  ch['cCompare']=new Chart(document.getElementById('cCompare'),{
+    type:cmpType,
+    data:{labels:ALL_SH2,datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:12,weight:'600'},boxWidth:12,padding:20,usePointStyle:true}},
+        tooltip:{...tt,callbacks:{
+          title:ctx=>ALL_SH2[ctx[0].dataIndex],
+          label:c=>c.raw!==null?` ${c.dataset.label}: ${tipFmt(c.raw)}`:` ${c.dataset.label}: нет данных`
+        }}
+      },
+      scales:{
+        x:{ticks:{color:'#6b7280',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'},border:{color:'rgba(255,255,255,.07)'}},
+        y:{ticks:{callback:yFmt,color:'#6b7280',font:{size:11}},grid:{color:'rgba(255,255,255,.04)'},border:{color:'rgba(255,255,255,.07)'}}
+      }
+    }
+  });
+  document.getElementById('compareLegendNote').textContent=
+    datasets.length>0?'Нажми на год чтобы скрыть/показать · наведи на график для деталей':'Нет данных за выбранные периоды';
+}
+
+
+// ── ЗАПУСК С БЛОКОМ СРАВНЕНИЯ ─────────────────────
+async function startApp(){
+  await init();
+  initYearBtns();
+  drawCompare();
+}
+startApp();
+
 setInterval(()=>{if(allM[selIdx])cache[allM[selIdx].name]=null;renderSel();},5*60*1000);
 </script>
 </body>
 </html>
+<!-- ЭТОТ БЛОК БУДЕТ ДОБАВЛЕН СКРИПТОМ -->
