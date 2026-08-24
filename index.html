@@ -178,6 +178,10 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
         <div style="display:flex;flex-direction:column;gap:5px">
           <button class="metric-btn active" id="btnModeYear" onclick="setCompareMode('year')">📅 По годам (X = месяцы)</button>
           <button class="metric-btn" id="btnModeMonth" onclick="setCompareMode('month')">📆 Месяц к месяцу (X = годы)</button>
+          <button class="metric-btn" id="btnModeDay" onclick="setCompareMode('day')">📈 По дням (X = день месяца)</button>
+        </div>
+        <div id="cumulSection" style="display:none;margin-top:10px">
+          <button class="metric-btn" id="btnCumul" onclick="toggleCumul()">Σ Нарастающим итогом</button>
         </div>
         <div class="card-title" style="margin:16px 0 10px">📅 Годы</div>
         <div id="yearBtns" style="display:flex;flex-direction:column;gap:5px"></div>
@@ -263,37 +267,63 @@ function toPct(v){
   return p <= 1 ? Math.round(p*100) : Math.round(p);
 }
 
+// Шапка сводного блока (строка с "ФАКТ за месяц")
+function findHeaderRow(rows){
+  for(let i=0;i<Math.min(8,rows.length);i++){
+    const line=(rows[i]||[]).join('|').toLowerCase();
+    if(line.includes('факт за месяц')) return i;
+  }
+  return 2;
+}
+
+// Все строки сводки (магазины + ИТОГО) между шапкой и дневными данными
+function summaryBlock(rows){
+  const C=cols(rows);
+  const h=findHeaderRow(rows);
+  const d=firstDailyRow(rows);
+  const end=d===-1?Math.min(rows.length,h+14):d;
+  const items=[];
+  for(let i=h+1;i<end;i++){
+    const r=rows[i]||[];
+    const plan=n(r[C.plan]), fact=n(r[C.fact]);
+    if(plan<1000&&fact<1000) continue;
+    items.push({i,plan,fact,r});
+  }
+  return {C,items};
+}
+
+// ИТОГО = строка с максимальным фактом (она же сумма остальных)
+function totalItem(items){
+  let t=items[0];
+  for(const it of items){
+    if(it.fact>t.fact||(it.fact===t.fact&&it.plan>t.plan)) t=it;
+  }
+  return t;
+}
+
 function parseMonth(rows){
-  const C = cols(rows);
-  const it = rows[8]||[];
+  const {C,items}=summaryBlock(rows);
+  if(!items.length) return {plan:0,fact:0,pct:0,avgDay:0,dayRemain:0};
+  const r=totalItem(items).r;
   return {
-    plan:      n(it[C.plan]),
-    fact:      n(it[C.fact]),
-    pct:       toPct(it[C.pct]),
-    avgDay:    n(it[C.avg]),
-    dayRemain: n(it[C.remain])
+    plan:      n(r[C.plan]),
+    fact:      n(r[C.fact]),
+    pct:       toPct(r[C.pct]),
+    avgDay:    n(r[C.avg]),
+    dayRemain: n(r[C.remain])
   };
 }
 
 function parseStores(rows){
-  const C = cols(rows);
-  const out = [];
-  for(let i=3;i<=7;i++){
-    const r = rows[i]||[];
-    const plan = n(r[C.plan]);
-    const fact = n(r[C.fact]);
-    if(plan < 10000 && fact < 10000) continue;
-    let nm = String(r[C.name]||'').trim();
-    if(!nm || nm.toLowerCase().startsWith('итого')) nm = 'Магазин';
-    out.push({
-      name: nm,
-      plan, fact,
-      pct: toPct(r[C.pct]),
-      avgDay: n(r[C.avg]),
-      dayRemain: n(r[C.remain])
-    });
-  }
-  return out;
+  const {C,items}=summaryBlock(rows);
+  if(!items.length) return [];
+  const tot=items.length>1?totalItem(items):null;
+  return items.filter(x=>!tot||x.i!==tot.i).map(x=>{
+    let nm=String(x.r[C.name]||'').trim();
+    if(!nm||nm.toLowerCase().startsWith('итого')) nm='Магазин';
+    return {name:nm,plan:x.plan,fact:x.fact,
+      pct:toPct(x.r[C.pct]),avgDay:n(x.r[C.avg]),dayRemain:n(x.r[C.remain])};
+  });
 }
 
 // Находим первую строку с датой в колонке 0
@@ -375,12 +405,14 @@ function renderKPI(cur,prev,today,isCur){
   const def=cur.fact-cur.plan;
   const gr=prev&&prev.fact>0?((cur.fact-prev.fact)/prev.fact*100).toFixed(1):null;
   const forecast=today>0?Math.round(cur.fact/today*din):0;
+  const defPct=cur.plan>0?Math.abs(Math.round(def/cur.plan*100))+'%':'—';
+  const fcPct=cur.plan>0?Math.round(forecast/cur.plan*100)+'% плана':'нет плана';
   document.getElementById('kpiRow').innerHTML=`
     <div class="kpi blue"><div class="kpi-label">Факт</div><div class="kpi-value">${fmtM(cur.fact)}М</div><div class="kpi-sub">план ${fmtM(cur.plan)}М</div><span class="kpi-badge ${bc(cur.pct)}">${cur.pct}%</span></div>
-    <div class="kpi ${def>=0?'green':'red'}"><div class="kpi-label">${def>=0?'Опережение':'Дефицит'}</div><div class="kpi-value">${fmtM(Math.abs(def))}М</div><div class="kpi-sub">${isCur?'осталось '+dl+' дней':'итог месяца'}</div><span class="kpi-badge ${def>=0?'bg':'br'}">${def>=0?'+':'–'}${Math.abs(Math.round(def/cur.plan*100))}%</span></div>
+    <div class="kpi ${def>=0?'green':'red'}"><div class="kpi-label">${def>=0?'Опережение':'Дефицит'}</div><div class="kpi-value">${fmtM(Math.abs(def))}М</div><div class="kpi-sub">${isCur?'осталось '+dl+' дней':'итог месяца'}</div><span class="kpi-badge ${def>=0?'bg':'br'}">${def>=0?'+':'–'}${defPct}</span></div>
     <div class="kpi amber"><div class="kpi-label">Ср. день факт</div><div class="kpi-value">${avg} тыс</div><div class="kpi-sub">за ${today} дней</div>${isCur&&need>0?`<span class="kpi-badge ba">нужно ${need} тыс/д</span>`:'<span class="kpi-badge bg">закрыт</span>'}</div>
     <div class="kpi purple"><div class="kpi-label">К прошлому мес.</div><div class="kpi-value">${gr!==null?Math.abs(gr)+'%':'—'}</div><div class="kpi-sub">${prev?fmt(prev.fact)+' → '+fmt(cur.fact):''}</div><span class="kpi-badge ${gr!==null&&parseFloat(gr)>0?'bg':'br'}">${gr!==null&&parseFloat(gr)>0?'▲ Рост':'▼ Снижение'}</span></div>
-    <div class="kpi ${forecast>=cur.plan?'green':'amber'}"><div class="kpi-label">Прогноз к концу</div><div class="kpi-value">${fmtM(forecast)}М</div><div class="kpi-sub">при текущем темпе</div><span class="kpi-badge ${forecast>=cur.plan?'bg':forecast>=cur.plan*.9?'ba':'br'}">${Math.round(forecast/cur.plan*100)}% плана</span></div>`;
+    <div class="kpi ${forecast>=cur.plan?'green':'amber'}"><div class="kpi-label">Прогноз к концу</div><div class="kpi-value">${fmtM(forecast)}М</div><div class="kpi-sub">при текущем темпе</div><span class="kpi-badge ${cur.plan>0&&forecast>=cur.plan?'bg':cur.plan>0&&forecast>=cur.plan*.9?'ba':'br'}">${fcPct}</span></div>`;
 }
 
 // ── МАГАЗИНЫ ─────────────────────────────────────────────
@@ -674,30 +706,33 @@ function getSheetName(month0, year){
 
 // Загрузка значения метрики из листа
 // Автоматически определяет структуру (старый или новый формат)
+// Загрузка листа по номеру месяца и году
+async function loadSheet(month0, year){
+  const now=new Date();
+  if(year===now.getFullYear()&&month0>now.getMonth()) return null;
+  const sn=getSheetName(month0,year);
+  for(const t of [sn, sn.trim(), sn.trim()+' ']){
+    try{ const r=await fetchCSV(t); if(r&&r.length>8) return r; }catch(e){}
+  }
+  return null;
+}
+
+function daysInMonth(month0,year){ return new Date(year,month0+1,0).getDate(); }
+
 // Загрузка значения для блока сравнения периодов
 async function getVal(month0, year, metric){
-  const now = new Date();
-  if(year === now.getFullYear() && month0 > now.getMonth()) return null;
+  const rows = await loadSheet(month0, year);
+  if(!rows) return null;
 
-  const sn = getSheetName(month0, year);
-  let rows = null;
-  for(const t of [sn, sn.trim(), sn.trim()+' ']){
-    try{ const r = await fetchCSV(t); if(r && r.length > 8){ rows = r; break; } }catch(e){}
-  }
-  if(!rows || rows.length < 9) return null;
-
-  const C = cols(rows);
-  const it = rows[8]||[];
-  const shift = C.shift;
+  const m = parseMonth(rows);   // ИТОГО ищется динамически
 
   switch(metric){
-    case 'fact':    { const v = n(it[C.fact]); return v > 0 ? v : null; }
-    case 'plan':    { const v = n(it[C.plan]); return v > 0 ? v : null; }
-    case 'pct':     { const v = toPct(it[C.pct]); return v > 0 ? v : null; }
-    case 'avg_day': { const v = n(it[C.avg]);  return v > 0 ? Math.round(v/1000) : null; }
+    case 'fact':    return m.fact   > 0 ? m.fact : null;
+    case 'plan':    return m.plan   > 0 ? m.plan : null;
+    case 'pct':     return m.pct    > 0 ? m.pct  : null;
+    case 'avg_day': return m.avgDay > 0 ? Math.round(m.avgDay/1000) : null;
     case 'avg_check': {
-      // Средний чек считается только для нового формата — в старом нет количества чеков
-      if(shift === 0) return null;
+      // В старом формате количества чеков нет — возвращаем пропуск, а не ноль
       const days = parseDaily(rows);
       let s = 0, k = 0;
       for(const d of days){
@@ -707,7 +742,6 @@ async function getVal(month0, year, metric){
       return k > 0 ? Math.round(s/k) : null;
     }
     case 'checks': {
-      if(shift === 0) return null;
       const days = parseDaily(rows);
       let t = 0;
       for(const d of days) t += d.c1 + d.c2 + d.c3;
@@ -734,9 +768,31 @@ function setCompareMode(m){
   compareMode=m;
   document.getElementById('btnModeYear').classList.toggle('active',m==='year');
   document.getElementById('btnModeMonth').classList.toggle('active',m==='month');
-  // Показываем/скрываем выбор месяца
-  document.getElementById('monthPickerSection').style.display=m==='month'?'block':'none';
+  document.getElementById('btnModeDay').classList.toggle('active',m==='day');
+  document.getElementById('monthPickerSection').style.display=(m==='month'||m==='day')?'block':'none';
+  document.getElementById('cumulSection').style.display=m==='day'?'block':'none';
+  if(m==='day'&&selMonths.size>3){
+    // По дням разумно сравнивать несколько месяцев, а не все 12
+    selMonths=new Set([new Date().getMonth()]);
+    syncMonthBtns();
+  }
   drawCompare();
+}
+
+let cumulMode=false;
+function toggleCumul(){
+  cumulMode=!cumulMode;
+  document.getElementById('btnCumul').classList.toggle('active',cumulMode);
+  drawCompare();
+}
+
+function syncMonthBtns(){
+  document.querySelectorAll('.month-btn').forEach(b=>{
+    const a=selMonths.has(parseInt(b.dataset.mo));
+    b.classList.toggle('active',a);
+    b.style.borderColor=a?'var(--accent)':'var(--border)';
+    b.style.color=a?'var(--accent)':'var(--muted2)';
+  });
 }
 
 function toggleYear(y){
@@ -758,10 +814,7 @@ let selMonths=new Set([0,1,2,3,4,5,6,7,8,9,10,11]); // все по умолча�
 function toggleMonth(m){
   if(selMonths.has(m)){if(selMonths.size>1)selMonths.delete(m);}
   else selMonths.add(m);
-  document.querySelectorAll('.month-btn').forEach(b=>{
-    const active=selMonths.has(parseInt(b.dataset.mo));
-    b.classList.toggle('active',active);
-  });
+  syncMonthBtns();
   drawCompare();
 }
 
@@ -866,10 +919,109 @@ function renderCompareChart(labels, datasets, yFmt, tipFmt, title, sub){
   document.getElementById('compareLegendNote').textContent='Наведи на точку чтобы увидеть детали · нажми на год в легенде чтобы скрыть';
 }
 
+// ── РЕЖИМ 3: По дням (ось X = день месяца, каждая линия = месяц+год) ──
+const COMBO_COLORS=['#4f8ef7','#22c55e','#f59e0b','#7c5cfc','#ef4444','#06b6d4','#ec4899','#84cc16'];
+
+async function drawModeDay(){
+  const years=[...selYears].sort();
+  const months=[...selMonths].sort((a,b)=>a-b);
+  const combos=[];
+  for(const y of years) for(const m of months) combos.push({y,m});
+
+  const MAX=8;
+  const shown=combos.slice(0,MAX);
+  const datasets=[];
+  let ci=0;
+
+  for(const {y,m} of shown){
+    const rows=await loadSheet(m,y);
+    if(!rows) continue;
+    const days=parseDaily(rows);
+    if(!days.length) continue;
+    const mi=parseMonth(rows);
+    const dim=daysInMonth(m,y);
+
+    // Раскладываем по дням месяца
+    const rev=new Array(dim).fill(null), chk=new Array(dim).fill(null);
+    for(const d of days){
+      if(d.day<1||d.day>dim) continue;
+      rev[d.day-1]=d.f1+d.f2+d.f3;
+      const ck=d.c1+d.c2+d.c3;
+      chk[d.day-1]=ck>0?ck:null;
+    }
+
+    // Считаем выбранный показатель по дням
+    const data=new Array(dim).fill(null);
+    let cumRev=0, cumChk=0, seen=0;
+    for(let i=0;i<dim;i++){
+      if(rev[i]!==null){ cumRev+=rev[i]; seen=i+1; }
+      if(chk[i]!==null) cumChk+=chk[i];
+      const has=rev[i]!==null;
+      switch(curMetric){
+        case 'fact':
+          data[i]=has?(cumulMode?cumRev:rev[i]):null; break;
+        case 'plan':
+          data[i]=mi.plan>0?(cumulMode?Math.round(mi.plan/dim*(i+1)):Math.round(mi.plan/dim)):null; break;
+        case 'pct':
+          data[i]=(has&&mi.plan>0)?Math.round(cumRev/mi.plan*1000)/10:null; break;
+        case 'avg_day':
+          data[i]=has&&seen>0?Math.round(cumRev/seen/1000):null; break;
+        case 'checks':
+          data[i]=chk[i]!==null?(cumulMode?cumChk:chk[i]):null; break;
+        case 'avg_check':
+          data[i]=(chk[i]&&rev[i])?Math.round(rev[i]/chk[i]):null; break;
+      }
+    }
+    if(!data.some(v=>v!==null)) continue;
+
+    const color=COMBO_COLORS[ci++%COMBO_COLORS.length];
+    datasets.push({
+      label:`${ALL_SH2[m]} ${y}`, data,
+      borderColor:color,
+      backgroundColor:cmpType==='line'?color+'20':color+'cc',
+      tension:0.3, fill:false, pointRadius:3,
+      pointBackgroundColor:color, pointBorderColor:'#0a0b0f', pointBorderWidth:1,
+      borderWidth:2.5, borderRadius:cmpType==='bar'?3:0, borderSkipped:false, spanGaps:true
+    });
+  }
+
+  // Подписи и форматы
+  let yFmt,tipFmt,sub;
+  const cum=cumulMode?' нарастающим итогом':'';
+  if(curMetric==='fact'||curMetric==='plan'){
+    yFmt=v=>v>=1000000?(v/1000000).toFixed(1)+'М':Math.round(v/1000)+'К';
+    tipFmt=v=>v>=1000000?(v/1000000).toFixed(2)+' млн ₽':Math.round(v/1000).toLocaleString('ru')+' тыс ₽';
+    sub='Рублей за день'+cum;
+  } else if(curMetric==='pct'){
+    yFmt=v=>v+'%'; tipFmt=v=>v+'% плана'; sub='Выполнение плана нарастающим итогом';
+  } else if(curMetric==='avg_check'){
+    yFmt=v=>v>=1000?Math.round(v/1000)+'К ₽':v+' ₽';
+    tipFmt=v=>v.toLocaleString('ru')+' ₽'; sub='Средний чек за день';
+  } else if(curMetric==='checks'){
+    yFmt=v=>v+' шт'; tipFmt=v=>v+' чеков'; sub='Чеков за день'+cum;
+  } else {
+    yFmt=v=>v+' тыс'; tipFmt=v=>v+' тыс ₽/день'; sub='Средняя дневная выручка нарастающим итогом';
+  }
+
+  const labels=Array.from({length:31},(_,i)=>i+1);
+  renderCompareChart(labels, datasets, yFmt, tipFmt,
+    'По дням: '+MLABELS[curMetric].label, sub+' · ось X = день месяца');
+
+  const note=document.getElementById('compareLegendNote');
+  if(!datasets.length){
+    note.textContent='Нет дневных данных за выбранные периоды';
+  } else if(combos.length>MAX){
+    note.textContent=`Показаны первые ${MAX} периодов из ${combos.length} — сними лишние годы или месяцы`;
+  } else {
+    note.textContent='Один и тот же день месяца сравнивается по вертикали · наведи для деталей';
+  }
+}
+
 async function drawCompare(){
   document.getElementById('compareLegendNote').textContent='Загружаем данные...';
   if(compareMode==='year') await drawModeYear();
-  else await drawModeMonth();
+  else if(compareMode==='month') await drawModeMonth();
+  else await drawModeDay();
 }
 
 
