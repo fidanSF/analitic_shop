@@ -238,162 +238,115 @@ function pcc(p){return p>=100?'#22c55e':p>=70?'#f59e0b':'#ef4444';}
 function bc(p){return p>=100?'bg':p>=75?'ba':'br';}
 
 // ── ПАРСИНГ ДАННЫХ ────────────────────────────────────────
-// Два формата листов:
-// НОВЫЙ (2026): строки 3-8, ИТОГО=строка8, план=col4, факт=col5, %=col6
-// СТАРЫЙ (2025 и раньше): строки 3-10, ИТОГО=строка10, план=col3, факт=col4, %=col5
+// Два формата листов. Колонки сдвинуты на 1:
+//   СТАРЫЙ (2022-2025): план=3, факт=4, %=5, ср.день=6, остаток=9, имя=19
+//   НОВЫЙ  (2026+):     план=4, факт=5, %=6, ср.день=7, остаток=10, имя=20
+// ИТОГО в обоих форматах = строка 8. Магазины = строки 3..7.
 
-function detectFormat(rows){
-  // Если в строке 10 есть "ИТОГО" в col0 — старый формат
-  const r10 = rows[10]||[];
-  if(String(r10[0]||'').toLowerCase().includes('итого')) return 'old';
-  return 'new';
+// Определяем сдвиг по тому, в какой колонке лежит процент
+function detectShift(rows){
+  const r = rows[3]||[];
+  if(String(r[5]||'').includes('%')) return 0;  // старый
+  if(String(r[6]||'').includes('%')) return 1;  // новый
+  // резервный способ: у нового формата в col5 большое число (факт)
+  return n(r[5]) > 10000 ? 1 : 0;
+}
+
+function cols(rows){
+  const s = detectShift(rows);
+  return {plan:3+s, fact:4+s, pct:5+s, avg:6+s, remain:9+s, name:19+s, shift:s};
+}
+
+function toPct(v){
+  const p = n(v);
+  if(p <= 0) return 0;
+  return p <= 1 ? Math.round(p*100) : Math.round(p);
 }
 
 function parseMonth(rows){
-  const fmt = detectFormat(rows);
-  let it, planC, factC, pctC, avgC;
-  if(fmt==='old'){
-    it=rows[10]||[]; planC=3; factC=4; pctC=5; avgC=6;
-  } else {
-    it=rows[8]||[]; planC=4; factC=5; pctC=6; avgC=7;
-  }
-  const plan=n(it[planC]), fact=n(it[factC]);
-  const pRaw=n(it[pctC]);
-  const pct=pRaw>0&&pRaw<=1?Math.round(pRaw*100):Math.round(pRaw);
-  const avgDay=n(it[avgC]);
-  const dayRemain=fmt==='old'?n(it[9]):n(it[10]);
-  return{plan,fact,pct,avgDay,dayRemain};
+  const C = cols(rows);
+  const it = rows[8]||[];
+  return {
+    plan:      n(it[C.plan]),
+    fact:      n(it[C.fact]),
+    pct:       toPct(it[C.pct]),
+    avgDay:    n(it[C.avg]),
+    dayRemain: n(it[C.remain])
+  };
 }
 
 function parseStores(rows){
-  const fmt = detectFormat(rows);
-  const stores=[];
-  // Магазины: строки 4-9 (старый) или 3-6 (новый)
-  const storeRows = fmt==='old' ? [4,5,6,7,8,9] : [3,4,5];
-  const planC = fmt==='old' ? 3 : 4;
-  const factC = fmt==='old' ? 4 : 5;
-  const pctC  = fmt==='old' ? 5 : 6;
-  const avgC  = fmt==='old' ? 6 : 7;
-  const remC  = fmt==='old' ? 9 : 10;
-
-  for(const ri of storeRows){
-    const r=rows[ri]||[];
-    const nm=String(r[0]||'').trim();
-    if(!nm||nm===''||nm.toLowerCase().includes('итого')||nm.toLowerCase()==='оп'||nm.toLowerCase().includes('магазин') && ri===3 && fmt==='old') continue;
-    if(fmt==='old' && nm.toLowerCase()==='магазин') continue;
-    const plan=n(r[planC]), fact=n(r[factC]);
-    if(plan<10000&&fact<10000) continue;
-    const pRaw=n(r[pctC]);
-    const pct=pRaw>0&&pRaw<=1?Math.round(pRaw*100):Math.round(pRaw);
-    const avgDay=n(r[avgC]);
-    const dayRemain=n(r[remC]);
-    stores.push({name:nm,plan,fact,pct,avgDay,dayRemain});
-  }
-  return stores;
-}
-
-function parseDaily(rows){
-  const fmt = detectFormat(rows);
-  const days=[];
-  // Новый формат: дневные с строки 9, col0=дата, col1=f1, col2=c1, col4=f2, col5=c2, col6=f3, col7=c3, col8=avg1, col9=avg2, col10=avg3
-  // Старый формат: дневные с строки 15, col0=дата, col1=f1, col3=f2, col5=f3, col7=f6, col9=f7
-  const startRow = fmt==='old' ? 15 : 9;
-
-  for(let i=startRow;i<rows.length;i++){
-    const r=rows[i]||[];
-    const ds=String(r[0]||'').trim();
-    if(!ds||ds==='')break;
-    // Дата — содержит цифры и разделители
-    if(!ds.match(/\d{4}|\d{1,2}[\.\/]/))continue;
-
-    let day=i-startRow+1;
-    // Извлекаем день
-    const mx=ds.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if(mx) day=parseInt(mx[3]);
-    else{
-      const mx2=ds.match(/^(\d{1,2})[\.\/]/);
-      if(mx2) day=parseInt(mx2[1]);
-    }
-
-    let f1,f2,f3,c1,c2,c3,a1,a2,a3;
-    if(fmt==='old'){
-      f1=n(r[1]); f2=n(r[3]); f3=n(r[5]);
-      c1=0; c2=0; c3=0;
-      a1=0; a2=0; a3=0;
-    } else {
-      f1=n(r[1]); f2=n(r[4]); f3=n(r[6]);
-      c1=n(r[2]); c2=n(r[5]); c3=n(r[7]);
-      a1=n(r[8]); a2=n(r[9]); a3=n(r[10]);
-      if(a1===0&&c1>0) a1=Math.round(f1/c1);
-      if(a2===0&&c2>0) a2=Math.round(f2/c2);
-      if(a3===0&&c3>0) a3=Math.round(f3/c3);
-    }
-    if(f1+f2+f3===0)continue;
-    days.push({day,f1,f2,f3,c1:Math.round(c1),c2:Math.round(c2),c3:Math.round(c3),a1,a2,a3});
-  }
-  return days;
-}
-// Строка 3 = Магазин №1: col4=план, col5=факт, col6=%, col7=ср.день, col10=дневной остаток
-// Строка 4 = Магазин №2
-// Строка 5 = Магазин №3
-// Строка 8 = ИТОГО
-// Строки 9+ = дневные данные:
-//   col0=дата, col1=факт№1, col2=чеки№1, col4=факт№2, col5=чеки№2,
-//   col6=факт№3, col7=чеки№3, col8=ср.чек№1, col9=ср.чек№2, col10=ср.чек№3
-
-function parseMonth(rows){
-  const r=rows[8]||[];
-  const plan=n(r[4]), fact=n(r[5]);
-  const pctRaw=n(r[6]);
-  const pct=pctRaw>0&&pctRaw<=1?Math.round(pctRaw*100):Math.round(pctRaw);
-  const avgDay=n(r[7]);
-  const dayRemain=n(r[10]);
-  return{plan,fact,pct,avgDay,dayRemain};
-}
-
-function parseStores(rows){
-  const names=['Магазин №1 (Победы)','Магазин №2 (Автоматики)','Магазин №3 (Орск)'];
-  const storeRows=[3,4,5];
-  return storeRows.map((ri,i)=>{
-    const r=rows[ri]||[];
-    const plan=n(r[4]), fact=n(r[5]);
-    const pctRaw=n(r[6]);
-    const pct=pctRaw>0&&pctRaw<=1?Math.round(pctRaw*100):Math.round(pctRaw);
-    const avgDay=n(r[7]);
-    const dayRemain=n(r[10]);
-    // Имя магазина находится в col 20
-    const nm=String(r[20]||names[i]).trim()||names[i];
-    return{name:nm||names[i],plan,fact,pct,avgDay,dayRemain};
-  }).filter(s=>s.plan>0);
-}
-
-function parseDaily(rows){
-  const d=[];
-  // Дневные данные начинаются с строки 9
-  for(let i=9;i<rows.length;i++){
-    const r=rows[i]||[];
-    const ds=String(r[0]||'').trim();
-    if(!ds||ds===''||ds==='0')break;
-    // Проверяем что это дата (содержит точку или слэш)
-    if(!ds.match(/\d/))continue;
-    const f1=n(r[1]),f2=n(r[4]),f3=n(r[6]);
-    const c1=n(r[2]),c2=n(r[5]),c3=n(r[7]);
-    const a1=n(r[8]),a2=n(r[9]),a3=n(r[10]);
-    if(f1+f2+f3===0)continue;
-    // Извлекаем день из даты "01.07.2026"
-    let day=i-8;
-    const mx=ds.match(/^(\d{1,2})[\.\/]/);
-    if(mx)day=parseInt(mx[1]);
-    d.push({
-      day,
-      f1,f2,f3,
-      c1:Math.round(c1),c2:Math.round(c2),c3:Math.round(c3),
-      a1:a1>0?Math.round(a1):(c1>0?Math.round(f1/c1):0),
-      a2:a2>0?Math.round(a2):(c2>0?Math.round(f2/c2):0),
-      a3:a3>0?Math.round(a3):(c3>0?Math.round(f3/c3):0)
+  const C = cols(rows);
+  const out = [];
+  for(let i=3;i<=7;i++){
+    const r = rows[i]||[];
+    const plan = n(r[C.plan]);
+    const fact = n(r[C.fact]);
+    if(plan < 10000 && fact < 10000) continue;
+    let nm = String(r[C.name]||'').trim();
+    if(!nm || nm.toLowerCase().startsWith('итого')) nm = 'Магазин';
+    out.push({
+      name: nm,
+      plan, fact,
+      pct: toPct(r[C.pct]),
+      avgDay: n(r[C.avg]),
+      dayRemain: n(r[C.remain])
     });
   }
-  return d;
+  return out;
+}
+
+// Находим первую строку с датой в колонке 0
+function firstDailyRow(rows){
+  for(let i=8;i<rows.length;i++){
+    const d = String((rows[i]||[])[0]||'').trim();
+    if(/^\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/.test(d) || /^\d{4}-\d{2}-\d{2}/.test(d)) return i;
+  }
+  return -1;
+}
+
+function dayOf(str){
+  let m = str.match(/^(\d{1,2})[.\/]/);
+  if(m) return parseInt(m[1]);
+  m = str.match(/^\d{4}-\d{2}-(\d{2})/);
+  if(m) return parseInt(m[1]);
+  return null;
+}
+
+function parseDaily(rows){
+  const shift = detectShift(rows);
+  const start = firstDailyRow(rows);
+  const days = [];
+  if(start === -1) return days;
+
+  for(let i=start;i<rows.length;i++){
+    const r = rows[i]||[];
+    const ds = String(r[0]||'').trim();
+    if(!ds) break;
+    const day = dayOf(ds);
+    if(day === null) continue;
+
+    let f1,f2,f3,c1,c2,c3,a1,a2,a3;
+    if(shift === 1){
+      // Новый формат: есть количество чеков и средний чек
+      f1=n(r[1]); c1=n(r[2]);
+      f2=n(r[4]); c2=n(r[5]);
+      f3=n(r[6]); c3=n(r[7]);
+      a1=n(r[8]); a2=n(r[9]); a3=n(r[10]);
+      if(!a1 && c1) a1 = Math.round(f1/c1);
+      if(!a2 && c2) a2 = Math.round(f2/c2);
+      if(!a3 && c3) a3 = Math.round(f3/c3);
+    } else {
+      // Старый формат: только выручка, чеков нет (в col2/4/6 — фамилии сотрудников)
+      f1=n(r[1]); f2=n(r[3]); f3=n(r[5]);
+      c1=c2=c3=0; a1=a2=a3=0;
+    }
+    if(f1+f2+f3 === 0) continue;
+    days.push({day,f1,f2,f3,
+      c1:Math.round(c1),c2:Math.round(c2),c3:Math.round(c3),
+      a1:Math.round(a1),a2:Math.round(a2),a3:Math.round(a3)});
+  }
+  return days;
 }
 
 // ── НАВИГАЦИЯ ───────────────────────────────────────────
@@ -477,13 +430,19 @@ let ch={};
 function mk(id,cfg){if(ch[id])ch[id].destroy();ch[id]=new Chart(document.getElementById(id),cfg);}
 const gc='rgba(255,255,255,.04)',bc2='rgba(255,255,255,.07)',tt={backgroundColor:'#1a1d26',borderColor:'rgba(255,255,255,.1)',borderWidth:1};
 
+// Короткие имена магазинов текущего листа для подписей серий
+let SERIES=['Магазин 1','Магазин 2','Магазин 3'];
+function setSeriesNames(stores){
+  SERIES=[0,1,2].map(i=>stores[i]?stores[i].name.replace('Магазин ',''):'—');
+}
+
 function drawDaily(days){
   mk('cDaily',{type:'bar',data:{
     labels:days.map(d=>d.day),
     datasets:[
-      {label:'№1 Победы',data:days.map(d=>d.f1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
-      {label:'№2 Автоматики',data:days.map(d=>d.f2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
-      {label:'№3 Орск',data:days.map(d=>d.f3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
+      {label:SERIES[0],data:days.map(d=>d.f1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
+      {label:SERIES[1],data:days.map(d=>d.f2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
+      {label:SERIES[2],data:days.map(d=>d.f3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
     ]
   },options:{responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},
@@ -527,14 +486,24 @@ function drawMonthly(months){
   }});
 }
 
+function noData(id,msg){
+  if(ch[id]){ch[id].destroy();delete ch[id];}
+  const cv=document.getElementById(id);
+  const g=cv.getContext('2d');
+  g.clearRect(0,0,cv.width,cv.height);
+  g.fillStyle='#6b7280';g.font='500 13px Manrope';g.textAlign='center';
+  g.fillText(msg,cv.width/2,cv.height/2);
+}
+
 function drawAvgDay(days){
   const f=days.filter(d=>d.a1>0||d.a2>0||d.a3>0);
+  if(!f.length){noData('cAvgDay','В этом месяце нет данных по количеству чеков');return;}
   mk('cAvgDay',{type:'line',data:{
     labels:f.map(d=>d.day),
     datasets:[
-      {label:'№1 Победы',data:f.map(d=>d.a1),borderColor:'#4f8ef7',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#4f8ef7'},
-      {label:'№2 Автоматики',data:f.map(d=>d.a2),borderColor:'#7c5cfc',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#7c5cfc'},
-      {label:'№3 Орск',data:f.map(d=>d.a3),borderColor:'#22c55e',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#22c55e'},
+      {label:SERIES[0],data:f.map(d=>d.a1),borderColor:'#4f8ef7',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#4f8ef7'},
+      {label:SERIES[1],data:f.map(d=>d.a2),borderColor:'#7c5cfc',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#7c5cfc'},
+      {label:SERIES[2],data:f.map(d=>d.a3),borderColor:'#22c55e',tension:.3,fill:false,pointRadius:4,pointBackgroundColor:'#22c55e'},
     ]
   },options:{responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},
@@ -587,12 +556,13 @@ function drawAvgMonths(months){
 
 function drawChecks(days){
   const f=days.filter(d=>d.c1>0||d.c2>0||d.c3>0);
+  if(!f.length){noData('cChecks','В этом месяце нет данных по количеству чеков');return;}
   mk('cChecks',{type:'bar',data:{
     labels:f.map(d=>d.day),
     datasets:[
-      {label:'№1 Победы',data:f.map(d=>d.c1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
-      {label:'№2 Автоматики',data:f.map(d=>d.c2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
-      {label:'№3 Орск',data:f.map(d=>d.c3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
+      {label:SERIES[0],data:f.map(d=>d.c1),backgroundColor:'#4f8ef7',borderRadius:3,stack:'s'},
+      {label:SERIES[1],data:f.map(d=>d.c2),backgroundColor:'#7c5cfc',borderRadius:3,stack:'s'},
+      {label:SERIES[2],data:f.map(d=>d.c3),backgroundColor:'#22c55e',borderRadius:3,stack:'s'},
     ]
   },options:{responsive:true,maintainAspectRatio:false,
     plugins:{legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11},boxWidth:10,padding:16}},
@@ -626,6 +596,7 @@ async function renderSel(){
   document.getElementById('t3').textContent=`Средний чек по дням — ${sel.name}`;
   document.getElementById('t4').textContent=`Количество чеков по дням — ${sel.name}`;
 
+  setSeriesNames(stores);
   renderKPI(cur,prvD,today,isCur);
   renderStores(stores,isCur);
   renderGap(stores,isCur,today,din);
@@ -703,84 +674,44 @@ function getSheetName(month0, year){
 
 // Загрузка значения метрики из листа
 // Автоматически определяет структуру (старый или новый формат)
+// Загрузка значения для блока сравнения периодов
 async function getVal(month0, year, metric){
-  const now=new Date();
-  if(year===now.getFullYear()&&month0>now.getMonth()) return null;
+  const now = new Date();
+  if(year === now.getFullYear() && month0 > now.getMonth()) return null;
 
-  const sn=getSheetName(month0,year);
-  let rows=null;
-
-  const tries=[sn, sn.trim(), sn.trim()+' '];
-  for(const t of tries){
-    try{
-      const r=await fetchCSV(t);
-      if(r&&r.length>8){rows=r;break;}
-    }catch(e){}
+  const sn = getSheetName(month0, year);
+  let rows = null;
+  for(const t of [sn, sn.trim(), sn.trim()+' ']){
+    try{ const r = await fetchCSV(t); if(r && r.length > 8){ rows = r; break; } }catch(e){}
   }
-  if(!rows||rows.length<9) return null;
+  if(!rows || rows.length < 9) return null;
 
-  // Определяем формат листа:
-  // НОВЫЙ (2026): ИТОГО в строке 8, col4=план, col5=факт, col6=%, col7=ср.день
-  // СТАРЫЙ (2025 и раньше): ИТОГО в строке 10, col3=план, col4=факт, col5=%, col6=ср.день
-  // Признак нового формата: строка 8 col0 пустая И строка 8 col5 содержит число
-  
-  let itogoRow, planCol, factCol, pctCol, avgCol, remainCol;
-  const r8=rows[8]||[], r10=rows[10]||[];
-  
-  // Проверяем строку 8 — если там ИТОГО или числа в col4/col5
-  const r8hasData = n(r8[5])>100000 || n(r8[4])>100000;
-  const r10isItogo = String(r10[0]||'').toLowerCase().includes('итого');
-  
-  if(r10isItogo){
-    // СТАРЫЙ формат: 2022-2025
-    itogoRow=r10; planCol=3; factCol=4; pctCol=5; avgCol=6; remainCol=9;
-  } else {
-    // НОВЫЙ формат: 2026
-    itogoRow=r8; planCol=4; factCol=5; pctCol=6; avgCol=7; remainCol=10;
-  }
+  const C = cols(rows);
+  const it = rows[8]||[];
+  const shift = C.shift;
 
   switch(metric){
-    case 'fact':{const v=n(itogoRow[factCol]);return v>0?v:null;}
-    case 'plan':{const v=n(itogoRow[planCol]);return v>0?v:null;}
-    case 'pct':{
-      const p=n(itogoRow[pctCol]);
-      return p>0?(p<=1?Math.round(p*100):Math.round(p)):null;
-    }
-    case 'avg_day':{const v=n(itogoRow[avgCol]);return v>0?Math.round(v/1000):null;}
-    case 'avg_check':{
-      // Для старого формата средний чек ищем в дневных данных иначе
-      let s=0,c=0,startRow=r10isItogo?12:9;
-      for(let i=startRow;i<rows.length;i++){
-        const r=rows[i]||[];
-        const ds=String(r[0]||'').trim();
-        if(!ds||!ds.match(/\d/))break;
-        if(r10isItogo){
-          // Старый формат: col1=факт№1, col2=чеки№1, col3=факт№2, col4=чеки№2...
-          // Ищем колонки с чеками
-          const f=n(r[1])+n(r[3])+n(r[5]);
-          const ck=n(r[2])+n(r[4])+n(r[6]);
-          if(ck>0){s+=f/ck;c++;}
-        } else {
-          const f=n(r[1])+n(r[4])+n(r[6]);
-          const ck=n(r[2])+n(r[5])+n(r[7]);
-          if(ck>0){s+=f/ck;c++;}
-        }
+    case 'fact':    { const v = n(it[C.fact]); return v > 0 ? v : null; }
+    case 'plan':    { const v = n(it[C.plan]); return v > 0 ? v : null; }
+    case 'pct':     { const v = toPct(it[C.pct]); return v > 0 ? v : null; }
+    case 'avg_day': { const v = n(it[C.avg]);  return v > 0 ? Math.round(v/1000) : null; }
+    case 'avg_check': {
+      // Средний чек считается только для нового формата — в старом нет количества чеков
+      if(shift === 0) return null;
+      const days = parseDaily(rows);
+      let s = 0, k = 0;
+      for(const d of days){
+        const f = d.f1 + d.f2 + d.f3, ck = d.c1 + d.c2 + d.c3;
+        if(ck > 0){ s += f/ck; k++; }
       }
-      return c>0?Math.round(s/c):null;
+      return k > 0 ? Math.round(s/k) : null;
     }
-    case 'checks':{
-      let t=0,startRow=r10isItogo?12:9;
-      for(let i=startRow;i<rows.length;i++){
-        const r=rows[i]||[];
-        const ds=String(r[0]||'').trim();
-        if(!ds||!ds.match(/\d/))break;
-        if(r10isItogo){
-          t+=n(r[2])+n(r[4])+n(r[6]);
-        } else {
-          t+=n(r[2])+n(r[5])+n(r[7]);
-        }
-      }
-      return t>0?Math.round(t):null;
+    case 'checks': {
+      if(shift === 0) return null;
+      const days = parseDaily(rows);
+      let t = 0;
+      for(const d of days) t += d.c1 + d.c2 + d.c3;
+      return t > 0 ? t : null;
     }
   }
   return null;
