@@ -237,7 +237,102 @@ function fmtK(v){return v>=1000?Math.round(v/1000)+'К':Math.round(v);}
 function pcc(p){return p>=100?'#22c55e':p>=70?'#f59e0b':'#ef4444';}
 function bc(p){return p>=100?'bg':p>=75?'ba':'br';}
 
-// ── СТРУКТУРА CSV (проверена по реальным данным) ──────────
+// ── ПАРСИНГ ДАННЫХ ────────────────────────────────────────
+// Два формата листов:
+// НОВЫЙ (2026): строки 3-8, ИТОГО=строка8, план=col4, факт=col5, %=col6
+// СТАРЫЙ (2025 и раньше): строки 3-10, ИТОГО=строка10, план=col3, факт=col4, %=col5
+
+function detectFormat(rows){
+  // Если в строке 10 есть "ИТОГО" в col0 — старый формат
+  const r10 = rows[10]||[];
+  if(String(r10[0]||'').toLowerCase().includes('итого')) return 'old';
+  return 'new';
+}
+
+function parseMonth(rows){
+  const fmt = detectFormat(rows);
+  let it, planC, factC, pctC, avgC;
+  if(fmt==='old'){
+    it=rows[10]||[]; planC=3; factC=4; pctC=5; avgC=6;
+  } else {
+    it=rows[8]||[]; planC=4; factC=5; pctC=6; avgC=7;
+  }
+  const plan=n(it[planC]), fact=n(it[factC]);
+  const pRaw=n(it[pctC]);
+  const pct=pRaw>0&&pRaw<=1?Math.round(pRaw*100):Math.round(pRaw);
+  const avgDay=n(it[avgC]);
+  const dayRemain=fmt==='old'?n(it[9]):n(it[10]);
+  return{plan,fact,pct,avgDay,dayRemain};
+}
+
+function parseStores(rows){
+  const fmt = detectFormat(rows);
+  const stores=[];
+  // Магазины: строки 4-9 (старый) или 3-6 (новый)
+  const storeRows = fmt==='old' ? [4,5,6,7,8,9] : [3,4,5];
+  const planC = fmt==='old' ? 3 : 4;
+  const factC = fmt==='old' ? 4 : 5;
+  const pctC  = fmt==='old' ? 5 : 6;
+  const avgC  = fmt==='old' ? 6 : 7;
+  const remC  = fmt==='old' ? 9 : 10;
+
+  for(const ri of storeRows){
+    const r=rows[ri]||[];
+    const nm=String(r[0]||'').trim();
+    if(!nm||nm===''||nm.toLowerCase().includes('итого')||nm.toLowerCase()==='оп'||nm.toLowerCase().includes('магазин') && ri===3 && fmt==='old') continue;
+    if(fmt==='old' && nm.toLowerCase()==='магазин') continue;
+    const plan=n(r[planC]), fact=n(r[factC]);
+    if(plan<10000&&fact<10000) continue;
+    const pRaw=n(r[pctC]);
+    const pct=pRaw>0&&pRaw<=1?Math.round(pRaw*100):Math.round(pRaw);
+    const avgDay=n(r[avgC]);
+    const dayRemain=n(r[remC]);
+    stores.push({name:nm,plan,fact,pct,avgDay,dayRemain});
+  }
+  return stores;
+}
+
+function parseDaily(rows){
+  const fmt = detectFormat(rows);
+  const days=[];
+  // Новый формат: дневные с строки 9, col0=дата, col1=f1, col2=c1, col4=f2, col5=c2, col6=f3, col7=c3, col8=avg1, col9=avg2, col10=avg3
+  // Старый формат: дневные с строки 15, col0=дата, col1=f1, col3=f2, col5=f3, col7=f6, col9=f7
+  const startRow = fmt==='old' ? 15 : 9;
+
+  for(let i=startRow;i<rows.length;i++){
+    const r=rows[i]||[];
+    const ds=String(r[0]||'').trim();
+    if(!ds||ds==='')break;
+    // Дата — содержит цифры и разделители
+    if(!ds.match(/\d{4}|\d{1,2}[\.\/]/))continue;
+
+    let day=i-startRow+1;
+    // Извлекаем день
+    const mx=ds.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if(mx) day=parseInt(mx[3]);
+    else{
+      const mx2=ds.match(/^(\d{1,2})[\.\/]/);
+      if(mx2) day=parseInt(mx2[1]);
+    }
+
+    let f1,f2,f3,c1,c2,c3,a1,a2,a3;
+    if(fmt==='old'){
+      f1=n(r[1]); f2=n(r[3]); f3=n(r[5]);
+      c1=0; c2=0; c3=0;
+      a1=0; a2=0; a3=0;
+    } else {
+      f1=n(r[1]); f2=n(r[4]); f3=n(r[6]);
+      c1=n(r[2]); c2=n(r[5]); c3=n(r[7]);
+      a1=n(r[8]); a2=n(r[9]); a3=n(r[10]);
+      if(a1===0&&c1>0) a1=Math.round(f1/c1);
+      if(a2===0&&c2>0) a2=Math.round(f2/c2);
+      if(a3===0&&c3>0) a3=Math.round(f3/c3);
+    }
+    if(f1+f2+f3===0)continue;
+    days.push({day,f1,f2,f3,c1:Math.round(c1),c2:Math.round(c2),c3:Math.round(c3),a1,a2,a3});
+  }
+  return days;
+}
 // Строка 3 = Магазин №1: col4=план, col5=факт, col6=%, col7=ср.день, col10=дневной остаток
 // Строка 4 = Магазин №2
 // Строка 5 = Магазин №3
