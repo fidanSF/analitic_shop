@@ -607,6 +607,7 @@ function getSheetName(month0, year){
 }
 
 // Загрузка значения метрики из листа
+// Автоматически определяет структуру (старый или новый формат)
 async function getVal(month0, year, metric){
   const now=new Date();
   if(year===now.getFullYear()&&month0>now.getMonth()) return null;
@@ -614,7 +615,6 @@ async function getVal(month0, year, metric){
   const sn=getSheetName(month0,year);
   let rows=null;
 
-  // Пробуем разные варианты
   const tries=[sn, sn.trim(), sn.trim()+' '];
   for(const t of tries){
     try{
@@ -624,26 +624,66 @@ async function getVal(month0, year, metric){
   }
   if(!rows||rows.length<9) return null;
 
-  const it=rows[8]||[];
+  // Определяем формат листа:
+  // НОВЫЙ (2026): ИТОГО в строке 8, col4=план, col5=факт, col6=%, col7=ср.день
+  // СТАРЫЙ (2025 и раньше): ИТОГО в строке 10, col3=план, col4=факт, col5=%, col6=ср.день
+  // Признак нового формата: строка 8 col0 пустая И строка 8 col5 содержит число
+  
+  let itogoRow, planCol, factCol, pctCol, avgCol, remainCol;
+  const r8=rows[8]||[], r10=rows[10]||[];
+  
+  // Проверяем строку 8 — если там ИТОГО или числа в col4/col5
+  const r8hasData = n(r8[5])>100000 || n(r8[4])>100000;
+  const r10isItogo = String(r10[0]||'').toLowerCase().includes('итого');
+  
+  if(r10isItogo){
+    // СТАРЫЙ формат: 2022-2025
+    itogoRow=r10; planCol=3; factCol=4; pctCol=5; avgCol=6; remainCol=9;
+  } else {
+    // НОВЫЙ формат: 2026
+    itogoRow=r8; planCol=4; factCol=5; pctCol=6; avgCol=7; remainCol=10;
+  }
+
   switch(metric){
-    case 'fact':{const v=n(it[5]);return v>0?v:null;}
-    case 'plan':{const v=n(it[4]);return v>0?v:null;}
-    case 'pct':{const p=n(it[6]);return p>0?(p<=1?Math.round(p*100):Math.round(p)):null;}
-    case 'avg_day':{const v=n(it[7]);return v>0?Math.round(v/1000):null;}
+    case 'fact':{const v=n(itogoRow[factCol]);return v>0?v:null;}
+    case 'plan':{const v=n(itogoRow[planCol]);return v>0?v:null;}
+    case 'pct':{
+      const p=n(itogoRow[pctCol]);
+      return p>0?(p<=1?Math.round(p*100):Math.round(p)):null;
+    }
+    case 'avg_day':{const v=n(itogoRow[avgCol]);return v>0?Math.round(v/1000):null;}
     case 'avg_check':{
-      let s=0,c=0;
-      for(let i=9;i<rows.length;i++){
-        const r=rows[i]||[];if(!String(r[0]||'').match(/\d/))break;
-        const f=n(r[1])+n(r[4])+n(r[6]),ck=n(r[2])+n(r[5])+n(r[7]);
-        if(ck>0){s+=f/ck;c++;}
+      // Для старого формата средний чек ищем в дневных данных иначе
+      let s=0,c=0,startRow=r10isItogo?12:9;
+      for(let i=startRow;i<rows.length;i++){
+        const r=rows[i]||[];
+        const ds=String(r[0]||'').trim();
+        if(!ds||!ds.match(/\d/))break;
+        if(r10isItogo){
+          // Старый формат: col1=факт№1, col2=чеки№1, col3=факт№2, col4=чеки№2...
+          // Ищем колонки с чеками
+          const f=n(r[1])+n(r[3])+n(r[5]);
+          const ck=n(r[2])+n(r[4])+n(r[6]);
+          if(ck>0){s+=f/ck;c++;}
+        } else {
+          const f=n(r[1])+n(r[4])+n(r[6]);
+          const ck=n(r[2])+n(r[5])+n(r[7]);
+          if(ck>0){s+=f/ck;c++;}
+        }
       }
       return c>0?Math.round(s/c):null;
     }
     case 'checks':{
-      let t=0;
-      for(let i=9;i<rows.length;i++){
-        const r=rows[i]||[];if(!String(r[0]||'').match(/\d/))break;
-        t+=n(r[2])+n(r[5])+n(r[7]);
+      let t=0,startRow=r10isItogo?12:9;
+      for(let i=startRow;i<rows.length;i++){
+        const r=rows[i]||[];
+        const ds=String(r[0]||'').trim();
+        if(!ds||!ds.match(/\d/))break;
+        if(r10isItogo){
+          t+=n(r[2])+n(r[4])+n(r[6]);
+        } else {
+          t+=n(r[2])+n(r[5])+n(r[7]);
+        }
       }
       return t>0?Math.round(t):null;
     }
