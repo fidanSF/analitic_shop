@@ -174,8 +174,17 @@ body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min
           <button class="metric-btn" onclick="setMetric('checks')" data-m="checks">🔢 Кол-во чеков</button>
           <button class="metric-btn" onclick="setMetric('avg_day')" data-m="avg_day">📅 Ср. день</button>
         </div>
-        <div class="card-title" style="margin:16px 0 10px">📅 Годы для сравнения</div>
+        <div class="card-title" style="margin:16px 0 10px">🔄 Режим сравнения</div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <button class="metric-btn active" id="btnModeYear" onclick="setCompareMode('year')">📅 По годам (X = месяцы)</button>
+          <button class="metric-btn" id="btnModeMonth" onclick="setCompareMode('month')">📆 Месяц к месяцу (X = годы)</button>
+        </div>
+        <div class="card-title" style="margin:16px 0 10px">📅 Годы</div>
         <div id="yearBtns" style="display:flex;flex-direction:column;gap:5px"></div>
+        <div id="monthPickerSection" style="display:none">
+          <div class="card-title" style="margin:12px 0 8px">🗓 Месяцы</div>
+          <div id="monthPicker" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+        </div>
         <div class="card-title" style="margin:16px 0 10px">📐 Тип графика</div>
         <div style="display:flex;gap:6px">
           <button class="metric-btn active" id="btnLine" onclick="setChartType('line')" style="flex:1">〰️ Линия</button>
@@ -565,89 +574,60 @@ async function init(){
 
 
 // ════════════════════════════════════════════════════════
-// БЛОК СРАВНЕНИЯ ПЕРИОДОВ
+// БЛОК СРАВНЕНИЯ ПЕРИОДОВ v2
 // ════════════════════════════════════════════════════════
-const YEAR_COLORS = {2022:'#6b7280',2023:'#9ca3af',2024:'#f59e0b',2025:'#4f8ef7',2026:'#22c55e'};
+const YEAR_COLORS = {2022:'#f59e0b',2023:'#9ca3af',2024:'#a78bfa',2025:'#4f8ef7',2026:'#22c55e'};
 const ALL_MN2=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const ALL_SH2=['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 
 let curMetric='fact', selYears=new Set([2024,2025,2026]), cmpType='line';
+let compareMode='year'; // 'year' = по годам, 'month' = месяц к месяцу
 
 const MLABELS={
-  fact:{label:'Выручка — факт',sub:'Помесячно · рублей'},
-  plan:{label:'Выручка — план',sub:'Помесячно · рублей'},
-  pct:{label:'% выполнения плана',sub:'Помесячно · %'},
-  avg_check:{label:'Средний чек',sub:'Среднемесячный чек · рублей'},
-  checks:{label:'Количество чеков',sub:'Помесячно · штук'},
-  avg_day:{label:'Ср. дневная выручка',sub:'Помесячно · рублей в день'},
+  fact:{label:'Выручка — факт',sub:'Рублей',fmt:v=>(v/1000000).toFixed(2)+' млн ₽',yFmt:v=>v>=1000000?(v/1000000).toFixed(1)+'М':Math.round(v/1000)+'К'},
+  plan:{label:'Выручка — план',sub:'Рублей',fmt:v=>(v/1000000).toFixed(2)+' млн ₽',yFmt:v=>v>=1000000?(v/1000000).toFixed(1)+'М':Math.round(v/1000)+'К'},
+  pct:{label:'% выполнения плана',sub:'%',fmt:v=>v+'%',yFmt:v=>v+'%'},
+  avg_check:{label:'Средний чек',sub:'Рублей на чек',fmt:v=>v.toLocaleString('ru')+' ₽',yFmt:v=>v>=1000?Math.round(v/1000)+'К ₽':v+' ₽'},
+  checks:{label:'Количество чеков',sub:'Штук в месяц',fmt:v=>v+' чеков',yFmt:v=>v+' шт'},
+  avg_day:{label:'Ср. дневная выручка',sub:'Тысяч рублей в день',fmt:v=>v+' тыс ₽',yFmt:v=>v+' тыс'},
 };
 
-function setMetric(m){
-  curMetric=m;
-  document.querySelectorAll('[data-m]').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
-  drawCompare();
-}
-
-function setChartType(t){
-  cmpType=t;
-  document.getElementById('btnLine').classList.toggle('active',t==='line');
-  document.getElementById('btnBar').classList.toggle('active',t==='bar');
-  drawCompare();
-}
-
-function toggleYear(y){
-  if(selYears.has(y)){if(selYears.size>1)selYears.delete(y);}
-  else selYears.add(y);
-  document.querySelectorAll('.year-btn').forEach(b=>{
-    const active=selYears.has(parseInt(b.dataset.y));
-    const c=YEAR_COLORS[b.dataset.y]||'#9ca3af';
-    b.classList.toggle('active',active);
-    b.style.borderColor=active?c:'var(--border)';
-    b.style.color=active?c:'var(--muted2)';
-  });
-  drawCompare();
-}
-
-function initYearBtns(){
-  const years=[...new Set(allM.map(m=>m.y))].sort((a,b)=>b-a);
-  // Добавляем 2022-2023 если они могут быть в таблице
-  [2023,2022].forEach(y=>{if(!years.includes(y))years.unshift(y);});
-  years.sort((a,b)=>b-a);
-  document.getElementById('yearBtns').innerHTML=years.map(y=>{
-    const c=YEAR_COLORS[y]||'#9ca3af';
-    const active=selYears.has(y);
-    return `<button class="year-btn ${active?'active':''}" onclick="toggleYear(${y})" data-y="${y}"
-      style="border-color:${active?c:'var(--border)'};color:${active?c:'var(--muted2)'}">
-      ● ${y}
-    </button>`;
-  }).join('');
-}
-
+// Точные названия листов по году и месяцу
 function getSheetName(month0, year){
-  // month0 = 0-based month index
-  const mn=ALL_MN2[month0];
-  const lo=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
-  if(year===2022) return lo[month0]+' 22';
-  if(year===2023) return lo[month0]+' 2023';
-  if(year===2024 && month0===11) return 'Декабрь 2024 '; // с пробелом
-  return mn+' '+year;
+  const upper=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const lower=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+  const lo22=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+  if(year===2022) return lo22[month0]+' 22';
+  if(year===2023){
+    if(month0===11) return 'Декабрь 2023'; // с большой
+    return lower[month0]+' 2023'; // остальные с маленькой
+  }
+  if(year===2024 && month0===11) return 'Декабрь 2024 '; // с пробелом!
+  return upper[month0]+' '+year;
 }
 
-async function getVal(sheetName, metric){
+// Загрузка значения метрики из листа
+async function getVal(month0, year, metric){
+  const now=new Date();
+  if(year===now.getFullYear()&&month0>now.getMonth()) return null;
+
+  const sn=getSheetName(month0,year);
   let rows=null;
-  // Пробуем несколько вариантов названия
-  const tries=[sheetName, sheetName.trim(), sheetName.trim()+' '];
+
+  // Пробуем разные варианты
+  const tries=[sn, sn.trim(), sn.trim()+' '];
   for(const t of tries){
     try{
       const r=await fetchCSV(t);
       if(r&&r.length>8){rows=r;break;}
     }catch(e){}
   }
-  if(!rows||rows.length<9)return null;
+  if(!rows||rows.length<9) return null;
+
   const it=rows[8]||[];
   switch(metric){
-    case 'fact': return n(it[5])||null;
-    case 'plan': return n(it[4])||null;
+    case 'fact':{const v=n(it[5]);return v>0?v:null;}
+    case 'plan':{const v=n(it[4]);return v>0?v:null;}
     case 'pct':{const p=n(it[6]);return p>0?(p<=1?Math.round(p*100):Math.round(p)):null;}
     case 'avg_day':{const v=n(it[7]);return v>0?Math.round(v/1000):null;}
     case 'avg_check':{
@@ -671,72 +651,144 @@ async function getVal(sheetName, metric){
   return null;
 }
 
-async function drawCompare(){
-  const info=MLABELS[curMetric];
-  document.getElementById('compareTitle').textContent='Сравнение: '+info.label;
-  document.getElementById('compareSub').textContent=info.sub;
-  document.getElementById('compareLegendNote').textContent='Загружаем данные...';
+function setMetric(m){
+  curMetric=m;
+  document.querySelectorAll('[data-m]').forEach(b=>b.classList.toggle('active',b.dataset.m===m));
+  drawCompare();
+}
 
+function setChartType(t){
+  cmpType=t;
+  document.getElementById('btnLine').classList.toggle('active',t==='line');
+  document.getElementById('btnBar').classList.toggle('active',t==='bar');
+  drawCompare();
+}
+
+function setCompareMode(m){
+  compareMode=m;
+  document.getElementById('btnModeYear').classList.toggle('active',m==='year');
+  document.getElementById('btnModeMonth').classList.toggle('active',m==='month');
+  // Показываем/скрываем выбор месяца
+  document.getElementById('monthPickerSection').style.display=m==='month'?'block':'none';
+  drawCompare();
+}
+
+function toggleYear(y){
+  if(selYears.has(y)){if(selYears.size>1)selYears.delete(y);}
+  else selYears.add(y);
+  document.querySelectorAll('.year-btn').forEach(b=>{
+    const active=selYears.has(parseInt(b.dataset.y));
+    const c=YEAR_COLORS[parseInt(b.dataset.y)]||'#9ca3af';
+    b.classList.toggle('active',active);
+    b.style.borderColor=active?c:'var(--border)';
+    b.style.color=active?c:'var(--muted2)';
+  });
+  drawCompare();
+}
+
+// Выбранные месяцы для режима месяц-к-месяцу
+let selMonths=new Set([0,1,2,3,4,5,6,7,8,9,10,11]); // все по умолчанию
+
+function toggleMonth(m){
+  if(selMonths.has(m)){if(selMonths.size>1)selMonths.delete(m);}
+  else selMonths.add(m);
+  document.querySelectorAll('.month-btn').forEach(b=>{
+    const active=selMonths.has(parseInt(b.dataset.mo));
+    b.classList.toggle('active',active);
+  });
+  drawCompare();
+}
+
+function initYearBtns(){
+  const years=[2026,2025,2024,2023,2022];
+  document.getElementById('yearBtns').innerHTML=years.map(y=>{
+    const c=YEAR_COLORS[y]||'#9ca3af';
+    const active=selYears.has(y);
+    return `<button class="year-btn ${active?'active':''}" onclick="toggleYear(${y})" data-y="${y}"
+      style="border-color:${active?c:'var(--border)'};color:${active?c:'var(--muted2)'}">
+      ● ${y}
+    </button>`;
+  }).join('');
+
+  // Кнопки месяцев
+  document.getElementById('monthPicker').innerHTML=ALL_SH2.map((sh,i)=>
+    `<button class="month-btn active" onclick="toggleMonth(${i})" data-mo="${i}"
+      style="background:var(--bg3);border:1px solid var(--accent);color:var(--accent);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace">
+      ${sh}
+    </button>`
+  ).join('');
+}
+
+// ── РЕЖИМ 1: По годам (каждый год = линия, ось X = месяцы) ──
+async function drawModeYear(){
   const years=[...selYears].sort();
-  const now=new Date();
+  const info=MLABELS[curMetric];
   const datasets=[];
 
   for(const year of years){
     const color=YEAR_COLORS[year]||'#9ca3af';
     const data=[];
     for(let m=0;m<12;m++){
-      if(year===now.getFullYear()&&m>now.getMonth()){data.push(null);continue;}
-      const sn=getSheetName(m,year);
-      const v=await getVal(sn,curMetric);
+      const v=await getVal(m,year,curMetric);
       data.push(v);
     }
-    const hasData=data.some(v=>v!==null);
-    if(!hasData)continue;
+    if(!data.some(v=>v!==null)) continue;
     datasets.push({
-      label:String(year),
-      data,
-      borderColor:color,
-      backgroundColor:cmpType==='line'?color+'20':color+'cc',
-      tension:0.35,
-      fill:cmpType==='line'&&false,
-      pointRadius:5,
-      pointBackgroundColor:color,
-      pointBorderColor:'#0a0b0f',
-      pointBorderWidth:2,
-      borderWidth:2.5,
-      borderRadius:cmpType==='bar'?4:0,
-      borderSkipped:false,
-      spanGaps:true,
+      label:String(year),data,
+      borderColor:color,backgroundColor:cmpType==='line'?color+'15':color+'cc',
+      tension:0.35,fill:false,pointRadius:5,
+      pointBackgroundColor:color,pointBorderColor:'#0a0b0f',pointBorderWidth:2,
+      borderWidth:2.5,borderRadius:cmpType==='bar'?4:0,borderSkipped:false,spanGaps:true,
     });
   }
 
-  let yFmt,tipFmt;
-  if(curMetric==='fact'||curMetric==='plan'){
-    yFmt=v=>v>=1000000?(v/1000000).toFixed(1)+'М':Math.round(v/1000)+'К';
-    tipFmt=v=>(v/1000000).toFixed(2)+' млн ₽';
-  } else if(curMetric==='pct'){
-    yFmt=v=>v+'%'; tipFmt=v=>v+'%';
-  } else if(curMetric==='avg_check'){
-    yFmt=v=>v>=1000?Math.round(v/1000)+'К':v;
-    tipFmt=v=>v.toLocaleString('ru')+' ₽';
-  } else if(curMetric==='checks'){
-    yFmt=v=>v+' шт'; tipFmt=v=>v+' чеков';
-  } else {
-    yFmt=v=>v+' тыс'; tipFmt=v=>v+' тыс ₽/д';
+  renderCompareChart(ALL_SH2, datasets, info.yFmt, info.fmt,
+    'Сравнение по годам: '+info.label, info.sub+' · ось X = месяцы, каждая линия = год');
+}
+
+// ── РЕЖИМ 2: Месяц к месяцу (ось X = годы, каждая линия = месяц) ──
+async function drawModeMonth(){
+  const years=[2022,2023,2024,2025,2026].filter(y=>selYears.has(y));
+  const months=[...selMonths].sort((a,b)=>a-b);
+  const info=MLABELS[curMetric];
+  const MONTH_COLORS=['#4f8ef7','#7c5cfc','#22c55e','#f59e0b','#ef4444','#ec4899','#06b6d4','#84cc16','#f97316','#8b5cf6','#14b8a6','#f43f5e'];
+  const datasets=[];
+
+  for(const m of months){
+    const color=MONTH_COLORS[m%12];
+    const data=[];
+    for(const year of years){
+      const v=await getVal(m,year,curMetric);
+      data.push(v);
+    }
+    if(!data.some(v=>v!==null)) continue;
+    datasets.push({
+      label:ALL_MN2[m],data,
+      borderColor:color,backgroundColor:cmpType==='line'?color+'15':color+'cc',
+      tension:0.35,fill:false,pointRadius:5,
+      pointBackgroundColor:color,pointBorderColor:'#0a0b0f',pointBorderWidth:2,
+      borderWidth:2.5,borderRadius:cmpType==='bar'?4:0,borderSkipped:false,spanGaps:true,
+    });
   }
 
+  renderCompareChart(years.map(String), datasets, info.yFmt, info.fmt,
+    'Месяц к месяцу: '+info.label, info.sub+' · ось X = годы, каждая линия = месяц');
+}
+
+function renderCompareChart(labels, datasets, yFmt, tipFmt, title, sub){
+  document.getElementById('compareTitle').textContent=title;
+  document.getElementById('compareSub').textContent=sub;
   if(ch['cCompare'])ch['cCompare'].destroy();
   ch['cCompare']=new Chart(document.getElementById('cCompare'),{
     type:cmpType,
-    data:{labels:ALL_SH2,datasets},
+    data:{labels,datasets},
     options:{
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:12,weight:'600'},boxWidth:12,padding:20,usePointStyle:true}},
+        legend:{display:true,position:'top',labels:{color:'#9ca3af',font:{size:11,weight:'600'},boxWidth:10,padding:16,usePointStyle:true}},
         tooltip:{...tt,callbacks:{
-          title:ctx=>ALL_SH2[ctx[0].dataIndex],
-          label:c=>c.raw!==null?` ${c.dataset.label}: ${tipFmt(c.raw)}`:` ${c.dataset.label}: нет данных`
+          label:c=>c.raw!==null?` ${c.dataset.label}: ${tipFmt(c.raw)}`:` ${c.dataset.label}: —`
         }}
       },
       scales:{
@@ -745,8 +797,13 @@ async function drawCompare(){
       }
     }
   });
-  document.getElementById('compareLegendNote').textContent=
-    datasets.length>0?'Нажми на год чтобы скрыть/показать · наведи на график для деталей':'Нет данных за выбранные периоды';
+  document.getElementById('compareLegendNote').textContent='Наведи на точку чтобы увидеть детали · нажми на год в легенде чтобы скрыть';
+}
+
+async function drawCompare(){
+  document.getElementById('compareLegendNote').textContent='Загружаем данные...';
+  if(compareMode==='year') await drawModeYear();
+  else await drawModeMonth();
 }
 
 
